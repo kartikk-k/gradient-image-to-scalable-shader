@@ -40,18 +40,16 @@ export default function Stage({
   const hasImage = !!state.img;
 
   const handleFps = useCallback((fps: number) => {
-    if (fpsRef.current) fpsRef.current.textContent = `${fps} fps`;
+    if (fpsRef.current) fpsRef.current.textContent = `${fps}`;
   }, []);
 
   useEffect(() => {
     if (!canvasRef.current || !containerRef.current) return;
     const engine = createGLEngine(canvasRef.current, containerRef.current, handleFps);
     onEngineReady(engine);
-
     const onResize = () => engine.resize();
     window.addEventListener("resize", onResize);
     engine.resize();
-
     return () => {
       window.removeEventListener("resize", onResize);
       engine.destroy();
@@ -61,8 +59,7 @@ export default function Stage({
 
   useEffect(() => {
     if (zoomRef.current) {
-      zoomRef.current.textContent =
-        state.zoom === 1 ? "1x" : `${state.zoom.toFixed(1)}x`;
+      zoomRef.current.textContent = state.zoom === 1 ? "1x" : `${state.zoom.toFixed(1)}x`;
     }
   }, [state.zoom]);
 
@@ -98,42 +95,28 @@ export default function Stage({
     (e: React.MouseEvent) => {
       if (!engineRef.current || !containerRef.current) return;
       const rect = containerRef.current.getBoundingClientRect();
-
       if (isDragging.current === "split") {
         const x = Math.max(0.05, Math.min(0.95, (e.clientX - rect.left) / rect.width));
         onSplitChange(x);
         return;
       }
-
       if (isDragging.current === "pan") {
         const es = engineRef.current.state;
         const dx = (e.clientX - lastMouse.current.x) / rect.width;
         const dy = (e.clientY - lastMouse.current.y) / rect.height;
         lastMouse.current = { x: e.clientX, y: e.clientY };
-        onZoomPan({
-          panX: es.panX + dx,
-          panY: es.panY - dy,
-        });
+        onZoomPan({ panX: es.panX + dx, panY: es.panY - dy });
       }
     },
     [engineRef, onZoomPan, onSplitChange]
   );
 
-  const handleMouseUp = useCallback(() => {
-    isDragging.current = false;
+  const handleMouseUp = useCallback(() => { isDragging.current = false; }, []);
+  const handleDoubleClick = useCallback(() => { onZoomPan({ zoom: 1, panX: 0, panY: 0 }); }, [onZoomPan]);
+  const handleSplitMouseDown = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+    isDragging.current = "split";
   }, []);
-
-  const handleDoubleClick = useCallback(() => {
-    onZoomPan({ zoom: 1, panX: 0, panY: 0 });
-  }, [onZoomPan]);
-
-  const handleSplitMouseDown = useCallback(
-    (e: React.MouseEvent) => {
-      e.stopPropagation();
-      isDragging.current = "split";
-    },
-    []
-  );
 
   const modes: { id: ViewMode; label: string }[] = [
     { id: "shader", label: "Shader" },
@@ -142,12 +125,34 @@ export default function Stage({
   ];
 
   const splitPct = `${state.compareSplit * 100}%`;
+  const savedBytes = imageSizeBytes > 0 && shaderSizeBytes >= 0
+    ? Math.max(0, imageSizeBytes - shaderSizeBytes) : 0;
+  const canShowSaved = imageSizeBytes > 0 && shaderSizeBytes > 0;
+  const savedPct = imageSizeBytes > 0 ? (savedBytes / imageSizeBytes) * 100 : 0;
 
   return (
-    <main className="relative flex items-center justify-center overflow-hidden bg-[radial-gradient(1200px_800px_at_70%_20%,#0a0a0a,transparent),#000]">
+    <main className="relative flex flex-col items-center justify-center overflow-hidden">
+      {/* Tabs above the image */}
+      {hasImage && (
+        <div className="flex gap-px bg-[#3a3a3a] p-0.5 rounded-lg mb-4">
+          {modes.map((m) => (
+            <button
+              key={m.id}
+              className={`text-[11px] px-4 py-1.5 rounded-md cursor-pointer transition-colors
+                ${state.mode === m.id
+                  ? "bg-[#555] text-white font-medium"
+                  : "text-[#999] hover:text-white"}`}
+              onClick={() => onModeChange(m.id)}
+            >
+              {m.label}
+            </button>
+          ))}
+        </div>
+      )}
+
       <div
         ref={containerRef}
-        className="relative w-[min(86%,920px)] rounded-[18px] overflow-hidden shadow-[0_40px_120px_-30px_rgba(0,0,0,.8),0_0_0_1px_theme(--color-neutral-800)]"
+        className="relative w-[min(86%,920px)] rounded-xl overflow-hidden border border-[#4a4a4a]"
         style={{
           aspectRatio: hasImage ? `${state.imgW / state.imgH}` : "16/10",
           cursor: hasImage && state.zoom > 1
@@ -164,88 +169,56 @@ export default function Stage({
         <canvas ref={canvasRef} className="block w-full h-full" />
 
         {!hasImage && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center text-center text-neutral-600 gap-2.5">
-            <div className="font-serif italic text-3xl text-neutral-500">
-              no gradient yet
-            </div>
-            <div className="text-[11px] tracking-widest uppercase">
-              Upload an image to begin
-            </div>
+          <div className="absolute inset-0 flex flex-col items-center justify-center text-center text-[#666] gap-1.5">
+            <div className="text-2xl text-[#555]">No gradient</div>
+            <div className="text-[11px] text-[#666]">Upload an image to begin</div>
           </div>
         )}
 
-        {hasImage && (
-          <div className="absolute top-4 right-4 flex gap-0.5 bg-neutral-900/80 backdrop-blur-md p-1 rounded-[10px] border border-neutral-700/50">
-            {modes.map((m) => (
-              <button
-                key={m.id}
-                className={`border-none font-mono text-[10px] px-3.5 py-1.5 rounded-[7px] cursor-pointer tracking-wider transition-all duration-150
-                  ${state.mode === m.id ? "bg-white text-black font-semibold" : "bg-transparent text-neutral-500 hover:text-neutral-300"}`}
-                onClick={() => onModeChange(m.id)}
-              >
-                {m.label}
-              </button>
-            ))}
-          </div>
-        )}
-
-        {/* Draggable compare divider */}
+        {/* Compare divider */}
         {hasImage && state.mode === "compare" && (
           <>
-            {/* Divider handle */}
             <div
               className="absolute top-0 bottom-0 z-10"
               style={{ left: splitPct, transform: "translateX(-50%)", width: "24px", cursor: "col-resize" }}
               onMouseDown={handleSplitMouseDown}
             >
-              {/* Handle pill */}
-              <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-5 h-8 rounded-full bg-white/90 backdrop-blur-sm shadow-[0_2px_8px_rgba(0,0,0,.5)] flex items-center justify-center gap-[2px]">
-                <div className="w-[2px] h-3 rounded-full bg-black/30" />
-                <div className="w-[2px] h-3 rounded-full bg-black/30" />
+              <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-4 h-7 rounded-full bg-white/80 shadow-[0_1px_4px_rgba(0,0,0,.4)] flex items-center justify-center gap-px">
+                <div className="w-px h-2.5 bg-black/25" />
+                <div className="w-px h-2.5 bg-black/25" />
               </div>
             </div>
-            {/* Labels */}
-            <div className="absolute bottom-3 left-4 font-mono text-[9px] tracking-widest uppercase text-white/60 pointer-events-none">
-              Shader
-            </div>
-            <div className="absolute bottom-3 right-4 font-mono text-[9px] tracking-widest uppercase text-white/60 pointer-events-none">
-              Original
-            </div>
+            <div className="absolute bottom-2.5 left-3 text-[9px] text-white/50 pointer-events-none">Shader</div>
+            <div className="absolute bottom-2.5 right-3 text-[9px] text-white/50 pointer-events-none">Original</div>
           </>
         )}
 
         {/* Zoom indicator */}
         {hasImage && state.zoom > 1 && (
-          <div className="absolute top-4 left-4 bg-neutral-900/80 backdrop-blur-md px-2.5 py-1 rounded-lg border border-neutral-700/50 font-mono text-[10px] text-neutral-400 tracking-wider pointer-events-none">
+          <div className="absolute top-3 left-3 bg-[#333]/90 px-2 py-0.5 rounded-md border border-[#555] text-[10px] text-[#ccc] pointer-events-none">
             <span ref={zoomRef}>{state.zoom.toFixed(1)}x</span>
           </div>
         )}
       </div>
 
+      {/* Footer stats */}
       {hasImage && (
-        <div className="absolute bottom-5 left-0 right-0 flex justify-center gap-5 text-[10.5px] text-neutral-600 tracking-wider uppercase">
+        <div className="flex justify-center gap-4 mt-4 text-xs font-light text-[#9a9a9a]">
           <span>
-            <b className="text-neutral-500 font-medium">
-              {state.imgW}&times;{state.imgH}
-            </b>{" "}
-            source
-            {imageSizeBytes > 0 && (
-              <span className="text-neutral-700 ml-1">({formatSize(imageSizeBytes)})</span>
-            )}
+            <span className="text-[#999]">{state.imgW}&times;{state.imgH}</span> source
+            {imageSizeBytes > 0 && <span className="text-[#c1c1c1] ml-1">({formatSize(imageSizeBytes)})</span>}
           </span>
           <span>
-            <b className="text-neutral-500 font-medium">
-              {state.gridW}&times;{state.gridH}
-            </b>{" "}
-            shader
-            {shaderSizeBytes > 0 && (
-              <span className="text-neutral-700 ml-1">({formatSize(shaderSizeBytes)})</span>
-            )}
+            <span className="text-[#999]">{state.gridW}&times;{state.gridH}</span> shader
+            {shaderSizeBytes > 0 && <span className="text-[#c1c1c1] ml-1">({formatSize(shaderSizeBytes)})</span>}
           </span>
+          {canShowSaved && (
+            <span className="text-emerald-500">
+              {savedPct.toFixed(0)}% smaller
+            </span>
+          )}
           <span>
-            <b ref={fpsRef} className="text-neutral-500 font-medium">
-              --
-            </b>
+            <span ref={fpsRef} className="text-[#c1c1c1]">--</span> fps
           </span>
         </div>
       )}

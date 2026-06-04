@@ -2,15 +2,14 @@
 
 import { useState, useRef, useCallback, useMemo } from "react";
 import { createDefaultState, type GLEngine, type GradientState } from "@/lib/gl-engine";
-import { buildStandalone } from "@/lib/export";
+import { buildStandalone, buildReactComponent } from "@/lib/export";
 import Sidebar from "./Sidebar";
 import Stage from "./Stage";
-import ExportModal from "./ExportModal";
 
 export default function GradientApp() {
   const [state, setState] = useState<GradientState>(createDefaultState);
-  const [modalOpen, setModalOpen] = useState(false);
-  const [copyLabel, setCopyLabel] = useState("Copy standalone HTML");
+  const [copyReactLabel, setCopyReactLabel] = useState("Copy React Code");
+  const [copyHtmlLabel, setCopyHtmlLabel] = useState("Copy HTML");
   const [imageSizeBytes, setImageSizeBytes] = useState(0);
   const engineRef = useRef<GLEngine | null>(null);
 
@@ -34,7 +33,7 @@ export default function GradientApp() {
           if (patch.quality !== undefined) es.quality = patch.quality;
           if (patch.noise !== undefined) es.noise = patch.noise;
           if (patch.noiseScale !== undefined) es.noiseScale = patch.noiseScale;
-          if (patch.animate !== undefined) es.animate = patch.animate;
+          if (patch.animMode !== undefined) es.animMode = patch.animMode;
 
           if (patch.res !== undefined && es.mode !== "source") {
             engineRef.current.rebuildTexture();
@@ -82,38 +81,53 @@ export default function GradientApp() {
     fr.readAsDataURL(file);
   }, []);
 
-  const handleExport = useCallback(() => {
+  function ensureTexture() {
     if (engineRef.current) {
       const es = engineRef.current.state;
-      if (es.mode === "source" || !es.dataURL) {
-        engineRef.current.rebuildTexture();
-      }
+      if (!es.dataURL) engineRef.current.rebuildTexture();
       setState((prev) => ({
         ...prev,
         gridW: es.gridW,
         gridH: es.gridH,
         dataURL: es.dataURL,
       }));
+      return es;
     }
-    setModalOpen(true);
+    return null;
+  }
+
+  const handleCopyReact = useCallback(() => {
+    const es = ensureTexture();
+    if (!es) return;
+    const code = buildReactComponent(es);
+    navigator.clipboard.writeText(code).then(
+      () => {
+        setCopyReactLabel("Copied");
+        setTimeout(() => setCopyReactLabel("Copy React Code"), 1500);
+      },
+      () => {
+        setCopyReactLabel("Failed");
+        setTimeout(() => setCopyReactLabel("Copy React Code"), 1500);
+      }
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleCopyHtml = useCallback(() => {
-    if (engineRef.current) {
-      const es = engineRef.current.state;
-      if (!es.dataURL) engineRef.current.rebuildTexture();
-      const html = buildStandalone(es);
-      navigator.clipboard.writeText(html).then(
-        () => {
-          setCopyLabel("Copied");
-          setTimeout(() => setCopyLabel("Copy standalone HTML"), 1500);
-        },
-        () => {
-          setCopyLabel("Copy failed");
-          setTimeout(() => setCopyLabel("Copy standalone HTML"), 1500);
-        }
-      );
-    }
+    const es = ensureTexture();
+    if (!es) return;
+    const html = buildStandalone(es);
+    navigator.clipboard.writeText(html).then(
+      () => {
+        setCopyHtmlLabel("Copied");
+        setTimeout(() => setCopyHtmlLabel("Copy HTML"), 1500);
+      },
+      () => {
+        setCopyHtmlLabel("Failed");
+        setTimeout(() => setCopyHtmlLabel("Copy HTML"), 1500);
+      }
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleModeChange = useCallback((mode: "shader" | "source" | "compare") => {
@@ -152,15 +166,16 @@ export default function GradientApp() {
   }, []);
 
   return (
-    <div className="grid grid-cols-[340px_1fr] h-screen overflow-hidden bg-black text-white font-mono text-[13px] leading-normal">
+    <div className="grid grid-cols-[320px_1fr] h-screen overflow-hidden bg-[#313131] text-[#ededed] text-[13px] leading-normal">
       <Sidebar
         state={state}
         hasImage={!!state.img}
         onFileLoad={handleFileLoad}
         onStateChange={syncEngineState}
-        onExport={handleExport}
+        onCopyReact={handleCopyReact}
         onCopyHtml={handleCopyHtml}
-        copyLabel={copyLabel}
+        copyReactLabel={copyReactLabel}
+        copyHtmlLabel={copyHtmlLabel}
       />
       <Stage
         state={state}
@@ -171,11 +186,6 @@ export default function GradientApp() {
         onZoomPan={handleZoomPan}
         imageSizeBytes={imageSizeBytes}
         shaderSizeBytes={shaderSizeBytes}
-      />
-      <ExportModal
-        open={modalOpen}
-        state={state}
-        onClose={() => setModalOpen(false)}
       />
     </div>
   );

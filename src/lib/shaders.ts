@@ -22,7 +22,8 @@ uniform float uQuality;
 uniform float uNoise;
 uniform float uNoiseScale;
 uniform float uMode;        // 0 = shader, 1 = source, 2 = compare
-uniform float uSplit;       // compare divider position 0..1
+uniform float uSplit;
+uniform float uAnimMode;    // 0 = none, 1..10 = animation types
 uniform vec2  uResolution;
 
 vec4 cubicWeights(float v){
@@ -57,7 +58,11 @@ vec3 textureBicubic(sampler2D tex, vec2 uv, vec2 texSize){
 
 float hash(vec2 p){ return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
 
-vec2 warp(vec2 uv, float t){
+// --- Animation modes ---
+// Each returns a warped UV. All use uFlow as intensity, uScale as detail.
+
+// 1: Organic flow (original) — multi-octave sinusoidal domain warp
+vec2 warpOrganic(vec2 uv, float t){
   vec2 p = uv * uScale;
   vec2 d;
   d.x = sin(p.y + t) + 0.5 * cos(p.x * 1.3 - t * 0.8);
@@ -65,6 +70,94 @@ vec2 warp(vec2 uv, float t){
   d.x += 0.35 * sin(p.y * 2.1 - t * 1.3);
   d.y += 0.35 * cos(p.x * 2.1 + t * 1.1);
   return uv + d * uFlow * 0.06;
+}
+
+// 2: Horizontal wave — wave sweeps left to right with vertical delay
+vec2 warpHWave(vec2 uv, float t){
+  float phase = uv.x * uScale * 2.0 + t;
+  float wave = sin(phase) * 0.5 + sin(phase * 0.6 + 1.3) * 0.3;
+  return uv + vec2(0.0, wave * uFlow * 0.08);
+}
+
+// 3: Vertical wave — wave sweeps top to bottom
+vec2 warpVWave(vec2 uv, float t){
+  float phase = uv.y * uScale * 2.0 + t;
+  float wave = sin(phase) * 0.5 + sin(phase * 0.7 + 2.0) * 0.3;
+  return uv + vec2(wave * uFlow * 0.08, 0.0);
+}
+
+// 4: Circular pulse — radial waves from center
+vec2 warpPulse(vec2 uv, float t){
+  vec2 c = uv - 0.5;
+  float r = length(c);
+  float wave = sin(r * uScale * 8.0 - t * 2.0) * uFlow * 0.05;
+  return uv + normalize(c + 0.001) * wave;
+}
+
+// 5: Swirl — rotation that varies with distance from center
+vec2 warpSwirl(vec2 uv, float t){
+  vec2 c = uv - 0.5;
+  float r = length(c);
+  float angle = r * uScale * 3.0 * uFlow * sin(t * 0.5);
+  float cs = cos(angle), sn = sin(angle);
+  return vec2(c.x * cs - c.y * sn, c.x * sn + c.y * cs) + 0.5;
+}
+
+// 6: Breathing — gentle uniform scale oscillation from center
+vec2 warpBreathe(vec2 uv, float t){
+  vec2 c = uv - 0.5;
+  float s = 1.0 + sin(t) * uFlow * 0.1;
+  return c * s + 0.5;
+}
+
+// 7: Drift — slow diagonal drift with gentle wobble
+vec2 warpDrift(vec2 uv, float t){
+  vec2 d;
+  d.x = sin(t * 0.3) * 0.7 + cos(t * 0.17) * 0.3;
+  d.y = cos(t * 0.23) * 0.6 + sin(t * 0.31) * 0.4;
+  return uv + d * uFlow * 0.04;
+}
+
+// 8: Liquid — turbulent multi-frequency noise-like warp
+vec2 warpLiquid(vec2 uv, float t){
+  vec2 p = uv * uScale;
+  vec2 d;
+  d.x = sin(p.y * 1.7 + t) + sin(p.x * 2.3 - t * 1.4) * 0.5
+      + sin(p.y * 3.1 + t * 0.7) * 0.25;
+  d.y = cos(p.x * 1.9 + t * 1.1) + cos(p.y * 2.7 - t * 0.9) * 0.5
+      + cos(p.x * 3.3 + t * 1.3) * 0.25;
+  return uv + d * uFlow * 0.04;
+}
+
+// 9: Ripple — concentric rings that expand outward
+vec2 warpRipple(vec2 uv, float t){
+  vec2 c = uv - 0.5;
+  float r = length(c);
+  float wave = sin(r * uScale * 12.0 - t * 3.0) * exp(-r * 2.0);
+  return uv + c * wave * uFlow * 0.15;
+}
+
+// 10: Glitch — stepped horizontal displacement bands
+vec2 warpGlitch(vec2 uv, float t){
+  float band = floor(uv.y * uScale * 4.0);
+  float shift = hash(vec2(band, floor(t * 2.0))) * 2.0 - 1.0;
+  float active = step(0.7, hash(vec2(band + 100.0, floor(t * 3.0))));
+  return uv + vec2(shift * uFlow * 0.08 * active, 0.0);
+}
+
+vec2 warp(vec2 uv, float t){
+  // animMode 0 = no animation (identity)
+  if(uAnimMode < 0.5) return uv;
+  if(uAnimMode < 1.5) return warpOrganic(uv, t);
+  if(uAnimMode < 2.5) return warpHWave(uv, t);
+  if(uAnimMode < 3.5) return warpVWave(uv, t);
+  if(uAnimMode < 4.5) return warpPulse(uv, t);
+  if(uAnimMode < 5.5) return warpSwirl(uv, t);
+  if(uAnimMode < 6.5) return warpBreathe(uv, t);
+  if(uAnimMode < 7.5) return warpDrift(uv, t);
+  if(uAnimMode < 8.5) return warpLiquid(uv, t);
+  if(uAnimMode < 9.5) return warpRipple(uv, t);
+  return warpGlitch(uv, t);
 }
 
 vec3 shaderColor(float t){
@@ -90,19 +183,15 @@ void main(){
   vec3 col;
 
   if(uMode < 0.5){
-    // Shader mode
     col = shaderColor(t);
   } else if(uMode < 1.5){
-    // Source mode — show original full-res image
     col = texture2D(uTexFull, vUv).rgb;
   } else {
-    // Compare mode — left=shader, right=original
     if(screenX < uSplit){
       col = shaderColor(t);
     } else {
       col = texture2D(uTexFull, vUv).rgb;
     }
-    // Divider line
     float px = gl_FragCoord.x;
     float splitPx = uResolution.x * uSplit;
     if(abs(px - splitPx) < 1.0){
@@ -112,3 +201,16 @@ void main(){
 
   gl_FragColor = vec4(col, 1.0);
 }`;
+
+export const ANIM_MODES = [
+  { id: 0, label: "None" },
+  { id: 1, label: "Organic" },
+  { id: 2, label: "H. Wave" },
+  { id: 3, label: "V. Wave" },
+  { id: 4, label: "Pulse" },
+  { id: 5, label: "Swirl" },
+  { id: 6, label: "Breathe" },
+  { id: 7, label: "Drift" },
+  { id: 8, label: "Liquid" },
+  { id: 9, label: "Ripple" },
+] as const;

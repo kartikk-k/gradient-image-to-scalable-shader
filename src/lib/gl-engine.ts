@@ -10,7 +10,7 @@ export interface GradientState {
   flow: number;
   speed: number;
   scale: number;
-  animate: boolean;
+  animMode: number;
   quality: number;
   noise: number;
   noiseScale: number;
@@ -27,14 +27,14 @@ export function createDefaultState(): GradientState {
     img: null,
     imgW: 0,
     imgH: 0,
-    res: 32,
+    res: 102,
     gridW: 0,
     gridH: 0,
     flow: 0.35,
     speed: 0.3,
     scale: 2.5,
-    animate: false,
-    quality: 0.7,
+    animMode: 0,
+    quality: 1.0,
     noise: 0,
     noiseScale: 1.0,
     zoom: 1,
@@ -114,6 +114,7 @@ export function createGLEngine(
     pan: gl.getUniformLocation(prog, "uPan"),
     mode: gl.getUniformLocation(prog, "uMode"),
     split: gl.getUniformLocation(prog, "uSplit"),
+    animMode: gl.getUniformLocation(prog, "uAnimMode"),
     resolution: gl.getUniformLocation(prog, "uResolution"),
   };
 
@@ -216,9 +217,10 @@ export function createGLEngine(
     gl.bindTexture(gl.TEXTURE_2D, textureFull);
     gl.uniform1i(U.texFull, 1);
 
+    const isAnimating = state.animMode > 0;
     gl.uniform2f(U.texSize, currentTexSize[0], currentTexSize[1]);
-    gl.uniform1f(U.time, state.animate ? time : 0);
-    gl.uniform1f(U.flow, state.animate ? state.flow : 0);
+    gl.uniform1f(U.time, isAnimating ? time : 0);
+    gl.uniform1f(U.flow, state.flow);
     gl.uniform1f(U.speed, state.speed);
     gl.uniform1f(U.scale, state.scale);
     gl.uniform1f(U.quality, state.quality);
@@ -228,6 +230,7 @@ export function createGLEngine(
     gl.uniform2f(U.pan, state.panX, state.panY);
     gl.uniform1f(U.mode, modeVal);
     gl.uniform1f(U.split, state.compareSplit);
+    gl.uniform1f(U.animMode, state.animMode);
     gl.uniform2f(U.resolution, gl.drawingBufferWidth, gl.drawingBufferHeight);
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
 
