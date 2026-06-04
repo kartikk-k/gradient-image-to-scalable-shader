@@ -17,6 +17,8 @@ export interface GradientState {
   zoom: number;
   panX: number;
   panY: number;
+  hueShift: number;
+  aspectOverride: string;
   compareSplit: number;
   mode: "shader" | "source" | "compare";
   dataURL: string | null;
@@ -40,6 +42,8 @@ export function createDefaultState(): GradientState {
     zoom: 1,
     panX: 0,
     panY: 0,
+    hueShift: 0,
+    aspectOverride: "auto",
     compareSplit: 0.5,
     mode: "shader",
     dataURL: null,
@@ -67,6 +71,7 @@ export interface GLEngine {
   destroy: () => void;
   state: GradientState;
   getCurrentTexSize: () => [number, number];
+  sampleColors: () => string[];
 }
 
 export function createGLEngine(
@@ -115,6 +120,7 @@ export function createGLEngine(
     mode: gl.getUniformLocation(prog, "uMode"),
     split: gl.getUniformLocation(prog, "uSplit"),
     animMode: gl.getUniformLocation(prog, "uAnimMode"),
+    hueShift: gl.getUniformLocation(prog, "uHueShift"),
     resolution: gl.getUniformLocation(prog, "uResolution"),
   };
 
@@ -231,6 +237,7 @@ export function createGLEngine(
     gl.uniform1f(U.mode, modeVal);
     gl.uniform1f(U.split, state.compareSplit);
     gl.uniform1f(U.animMode, state.animMode);
+    gl.uniform1f(U.hueShift, state.hueShift);
     gl.uniform2f(U.resolution, gl.drawingBufferWidth, gl.drawingBufferHeight);
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
 
@@ -245,12 +252,35 @@ export function createGLEngine(
   }
   animId = requestAnimationFrame(frame);
 
+  function sampleColors(): string[] {
+    const w = sampleCanvas.width;
+    const h = sampleCanvas.height;
+    if (w < 2 || h < 2) return ["#1a1a1a", "#1a1a1a", "#1a1a1a"];
+
+    // Sample 5 points: corners + center, then darken for background use
+    const points = [
+      [0, 0], [w - 1, 0], [Math.floor(w / 2), Math.floor(h / 2)],
+      [0, h - 1], [w - 1, h - 1],
+    ];
+    const colors: string[] = [];
+    for (const [px, py] of points) {
+      const d = sctx.getImageData(px, py, 1, 1).data;
+      // Keep at ~50% brightness + boost floor so darks still have color
+      const r = Math.round(d[0] * 0.5 + 15);
+      const g = Math.round(d[1] * 0.5 + 15);
+      const b = Math.round(d[2] * 0.5 + 15);
+      colors.push(`rgb(${r},${g},${b})`);
+    }
+    return colors;
+  }
+
   return {
     rebuildTexture,
     uploadSourceFull,
     resize,
     state,
     getCurrentTexSize: () => currentTexSize,
+    sampleColors,
     destroy: () => cancelAnimationFrame(animId),
   };
 }

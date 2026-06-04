@@ -13,6 +13,7 @@ uniform float uQuality;   // ${state.quality.toFixed(2)} suggested  (0 = bilinea
 uniform float uNoise;      // ${state.noise.toFixed(3)} suggested  (0 = none, static grain)
 uniform float uNoiseScale;  // ${state.noiseScale.toFixed(1)} suggested  (grain size in px)
 uniform float uAnimMode;    // ${state.animMode} (0=none,1=organic,2=hwave,3=vwave,4=pulse,5=swirl,6=breathe,7=drift,8=liquid,9=ripple,10=glitch)
+uniform float uHueShift;    // ${state.hueShift.toFixed(2)} hue rotation in radians
 
 vec4 cubicWeights(float v){
   vec4 n = vec4(1.0, 2.0, 3.0, 4.0) - v;
@@ -45,6 +46,15 @@ vec3 textureBicubic(sampler2D tex, vec2 uv, vec2 texSize){
 }
 
 float hash(vec2 p){ return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
+
+vec3 hueRotate(vec3 c, float angle){
+  float co = cos(angle), si = sin(angle);
+  vec3 w = vec3(0.299, 0.587, 0.114);
+  vec3 r = vec3(co + (1.0 - co) * w.x, (1.0 - co) * w.x * w.y - si * w.z, (1.0 - co) * w.x * w.z + si * w.y);
+  vec3 g = vec3((1.0 - co) * w.x * w.y + si * w.z, co + (1.0 - co) * w.y, (1.0 - co) * w.y * w.z - si * w.x);
+  vec3 b = vec3((1.0 - co) * w.x * w.z - si * w.y, (1.0 - co) * w.y * w.z + si * w.x, co + (1.0 - co) * w.z);
+  return vec3(dot(c, r), dot(c, g), dot(c, b));
+}
 
 vec2 warpOrganic(vec2 uv, float t){
   vec2 p = uv * uScale;
@@ -136,6 +146,7 @@ void main(){
     float n = hash(np) * 2.0 - 1.0;
     col += n * uNoise;
   }
+  if(uHueShift != 0.0) col = hueRotate(col, uHueShift);
   gl_FragColor = vec4(col, 1.0);
 }`;
 }
@@ -218,9 +229,9 @@ gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE);gl.texParamet
 gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,1,1,0,gl.RGBA,gl.UNSIGNED_BYTE,new Uint8Array([0,0,0,255]));
 const im=new Image();im.onload=()=>{gl.bindTexture(gl.TEXTURE_2D,tx);gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,im);};
 im.src="${state.dataURL}";
-const uT=gl.getUniformLocation(p,'uTime'),uF=gl.getUniformLocation(p,'uFlow'),uS=gl.getUniformLocation(p,'uSpeed'),uC=gl.getUniformLocation(p,'uScale'),uTex=gl.getUniformLocation(p,'uTex'),uTS=gl.getUniformLocation(p,'uTexSize'),uQ=gl.getUniformLocation(p,'uQuality'),uN=gl.getUniformLocation(p,'uNoise'),uNS=gl.getUniformLocation(p,'uNoiseScale'),uAM=gl.getUniformLocation(p,'uAnimMode');
+const uT=gl.getUniformLocation(p,'uTime'),uF=gl.getUniformLocation(p,'uFlow'),uS=gl.getUniformLocation(p,'uSpeed'),uC=gl.getUniformLocation(p,'uScale'),uTex=gl.getUniformLocation(p,'uTex'),uTS=gl.getUniformLocation(p,'uTexSize'),uQ=gl.getUniformLocation(p,'uQuality'),uN=gl.getUniformLocation(p,'uNoise'),uNS=gl.getUniformLocation(p,'uNoiseScale'),uAM=gl.getUniformLocation(p,'uAnimMode'),uHS=gl.getUniformLocation(p,'uHueShift');
 const t0=performance.now();
-(function loop(n){requestAnimationFrame(loop);gl.uniform1i(uTex,0);gl.uniform2f(uTS,${state.gridW},${state.gridH});gl.uniform1f(uT,${state.animMode > 0 ? "(n-t0)/1000" : "0"});gl.uniform1f(uF,${state.flow});gl.uniform1f(uS,${state.speed});gl.uniform1f(uC,${state.scale});gl.uniform1f(uQ,${state.quality});gl.uniform1f(uN,${state.noise});gl.uniform1f(uNS,${state.noiseScale});gl.uniform1f(uAM,${state.animMode});gl.drawArrays(gl.TRIANGLE_STRIP,0,4);})(t0);
+(function loop(n){requestAnimationFrame(loop);gl.uniform1i(uTex,0);gl.uniform2f(uTS,${state.gridW},${state.gridH});gl.uniform1f(uT,${state.animMode > 0 ? "(n-t0)/1000" : "0"});gl.uniform1f(uF,${state.flow});gl.uniform1f(uS,${state.speed});gl.uniform1f(uC,${state.scale});gl.uniform1f(uQ,${state.quality});gl.uniform1f(uN,${state.noise});gl.uniform1f(uNS,${state.noiseScale});gl.uniform1f(uAM,${state.animMode});gl.uniform1f(uHS,${state.hueShift});gl.drawArrays(gl.TRIANGLE_STRIP,0,4);})(t0);
 <\/script></body></html>`;
 }
 
@@ -304,6 +315,7 @@ export default function GradientShader({
       noise: gl.getUniformLocation(prog, "uNoise"),
       noiseScale: gl.getUniformLocation(prog, "uNoiseScale"),
       animMode: gl.getUniformLocation(prog, "uAnimMode"),
+      hueShift: gl.getUniformLocation(prog, "uHueShift"),
     };
 
     function resize() {
@@ -333,6 +345,7 @@ export default function GradientShader({
       gl.uniform1f(U.noise, ${state.noise});
       gl.uniform1f(U.noiseScale, ${state.noiseScale});
       gl.uniform1f(U.animMode, ${state.animMode});
+      gl.uniform1f(U.hueShift, ${state.hueShift});
       gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
     }
     animId = requestAnimationFrame(frame);

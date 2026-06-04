@@ -24,6 +24,7 @@ uniform float uNoiseScale;
 uniform float uMode;        // 0 = shader, 1 = source, 2 = compare
 uniform float uSplit;
 uniform float uAnimMode;    // 0 = none, 1..10 = animation types
+uniform float uHueShift;    // hue rotation in radians
 uniform vec2  uResolution;
 
 vec4 cubicWeights(float v){
@@ -57,6 +58,27 @@ vec3 textureBicubic(sampler2D tex, vec2 uv, vec2 texSize){
 }
 
 float hash(vec2 p){ return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
+
+vec3 hueRotate(vec3 c, float angle){
+  float co = cos(angle), si = sin(angle);
+  vec3 w = vec3(0.299, 0.587, 0.114);
+  vec3 r = vec3(
+    co + (1.0 - co) * w.x,
+    (1.0 - co) * w.x * w.y - si * w.z,
+    (1.0 - co) * w.x * w.z + si * w.y
+  );
+  vec3 g = vec3(
+    (1.0 - co) * w.x * w.y + si * w.z,
+    co + (1.0 - co) * w.y,
+    (1.0 - co) * w.y * w.z - si * w.x
+  );
+  vec3 b = vec3(
+    (1.0 - co) * w.x * w.z - si * w.y,
+    (1.0 - co) * w.y * w.z + si * w.x,
+    co + (1.0 - co) * w.z
+  );
+  return vec3(dot(c, r), dot(c, g), dot(c, b));
+}
 
 // --- Animation modes ---
 // Each returns a warped UV. All use uFlow as intensity, uScale as detail.
@@ -173,6 +195,7 @@ vec3 shaderColor(float t){
     float n = hash(np) * 2.0 - 1.0;
     col += n * uNoise;
   }
+  if(uHueShift != 0.0) col = hueRotate(col, uHueShift);
   return col;
 }
 

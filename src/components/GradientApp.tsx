@@ -3,14 +3,17 @@
 import { useState, useRef, useCallback, useMemo } from "react";
 import { createDefaultState, type GLEngine, type GradientState } from "@/lib/gl-engine";
 import { buildStandalone, buildReactComponent } from "@/lib/export";
-import Sidebar from "./Sidebar";
+import defaultGradient from "@/assets/default-gradient.png";
 import Stage from "./Stage";
+
+const DEFAULTS = createDefaultState();
 
 export default function GradientApp() {
   const [state, setState] = useState<GradientState>(createDefaultState);
-  const [copyReactLabel, setCopyReactLabel] = useState("Copy React Code");
+  const [copyReactLabel, setCopyReactLabel] = useState("Copy React code");
   const [copyHtmlLabel, setCopyHtmlLabel] = useState("Copy HTML");
   const [imageSizeBytes, setImageSizeBytes] = useState(0);
+  const [bgColors, setBgColors] = useState<string[]>([]);
   const engineRef = useRef<GLEngine | null>(null);
 
   const shaderSizeBytes = useMemo(() => {
@@ -34,6 +37,8 @@ export default function GradientApp() {
           if (patch.noise !== undefined) es.noise = patch.noise;
           if (patch.noiseScale !== undefined) es.noiseScale = patch.noiseScale;
           if (patch.animMode !== undefined) es.animMode = patch.animMode;
+          if (patch.hueShift !== undefined) es.hueShift = patch.hueShift;
+          if (patch.aspectOverride !== undefined) es.aspectOverride = patch.aspectOverride;
 
           if (patch.res !== undefined && es.mode !== "source") {
             engineRef.current.rebuildTexture();
@@ -48,38 +53,41 @@ export default function GradientApp() {
     []
   );
 
-  const handleFileLoad = useCallback((file: File) => {
-    setImageSizeBytes(file.size);
+  const loadImageFromSrc = useCallback((src: string, fileSize: number) => {
+    setImageSizeBytes(fileSize);
     const img = new Image();
-    const fr = new FileReader();
-    fr.onload = (e) => {
-      img.onload = () => {
-        if (engineRef.current) {
-          const es = engineRef.current.state;
-          es.img = img;
-          es.imgW = img.naturalWidth;
-          es.imgH = img.naturalHeight;
-          es.mode = "shader";
-          engineRef.current.rebuildTexture();
-          engineRef.current.uploadSourceFull();
-          engineRef.current.resize();
+    img.onload = () => {
+      if (engineRef.current) {
+        const es = engineRef.current.state;
+        es.img = img;
+        es.imgW = img.naturalWidth;
+        es.imgH = img.naturalHeight;
+        es.mode = "shader";
+        engineRef.current.rebuildTexture();
+        engineRef.current.uploadSourceFull();
+        engineRef.current.resize();
+        setBgColors(engineRef.current.sampleColors());
 
-          setState((prev) => ({
-            ...prev,
-            img,
-            imgW: img.naturalWidth,
-            imgH: img.naturalHeight,
-            mode: "shader",
-            gridW: es.gridW,
-            gridH: es.gridH,
-            dataURL: es.dataURL,
-          }));
-        }
-      };
-      img.src = e.target?.result as string;
+        setState((prev) => ({
+          ...prev,
+          img,
+          imgW: img.naturalWidth,
+          imgH: img.naturalHeight,
+          mode: "shader",
+          gridW: es.gridW,
+          gridH: es.gridH,
+          dataURL: es.dataURL,
+        }));
+      }
     };
-    fr.readAsDataURL(file);
+    img.src = src;
   }, []);
+
+  const handleFileLoad = useCallback((file: File) => {
+    const fr = new FileReader();
+    fr.onload = (e) => loadImageFromSrc(e.target?.result as string, file.size);
+    fr.readAsDataURL(file);
+  }, [loadImageFromSrc]);
 
   function ensureTexture() {
     if (engineRef.current) {
@@ -101,14 +109,8 @@ export default function GradientApp() {
     if (!es) return;
     const code = buildReactComponent(es);
     navigator.clipboard.writeText(code).then(
-      () => {
-        setCopyReactLabel("Copied");
-        setTimeout(() => setCopyReactLabel("Copy React Code"), 1500);
-      },
-      () => {
-        setCopyReactLabel("Failed");
-        setTimeout(() => setCopyReactLabel("Copy React Code"), 1500);
-      }
+      () => { setCopyReactLabel("Copied"); setTimeout(() => setCopyReactLabel("Copy React code"), 1500); },
+      () => { setCopyReactLabel("Failed"); setTimeout(() => setCopyReactLabel("Copy React code"), 1500); }
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -118,14 +120,8 @@ export default function GradientApp() {
     if (!es) return;
     const html = buildStandalone(es);
     navigator.clipboard.writeText(html).then(
-      () => {
-        setCopyHtmlLabel("Copied");
-        setTimeout(() => setCopyHtmlLabel("Copy HTML"), 1500);
-      },
-      () => {
-        setCopyHtmlLabel("Failed");
-        setTimeout(() => setCopyHtmlLabel("Copy HTML"), 1500);
-      }
+      () => { setCopyHtmlLabel("Copied"); setTimeout(() => setCopyHtmlLabel("Copy HTML"), 1500); },
+      () => { setCopyHtmlLabel("Failed"); setTimeout(() => setCopyHtmlLabel("Copy HTML"), 1500); }
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -134,12 +130,8 @@ export default function GradientApp() {
     if (engineRef.current) {
       const es = engineRef.current.state;
       es.mode = mode;
-      if (mode === "source" || mode === "compare") {
-        engineRef.current.uploadSourceFull();
-      }
-      if (mode === "shader" || mode === "compare") {
-        engineRef.current.rebuildTexture();
-      }
+      if (mode === "source" || mode === "compare") engineRef.current.uploadSourceFull();
+      if (mode === "shader" || mode === "compare") engineRef.current.rebuildTexture();
     }
     setState((prev) => ({ ...prev, mode }));
   }, []);
@@ -155,37 +147,35 @@ export default function GradientApp() {
   }, []);
 
   const handleSplitChange = useCallback((split: number) => {
-    if (engineRef.current) {
-      engineRef.current.state.compareSplit = split;
-    }
+    if (engineRef.current) engineRef.current.state.compareSplit = split;
     setState((prev) => ({ ...prev, compareSplit: split }));
   }, []);
 
   const handleEngineReady = useCallback((engine: GLEngine) => {
     engineRef.current = engine;
-  }, []);
+    // Load default gradient immediately
+    loadImageFromSrc(defaultGradient.src, 0);
+  }, [loadImageFromSrc]);
 
   return (
-    <div className="grid grid-cols-[320px_1fr] h-screen overflow-hidden bg-[#313131] text-[#ededed] text-[13px] leading-normal">
-      <Sidebar
-        state={state}
-        hasImage={!!state.img}
-        onFileLoad={handleFileLoad}
-        onStateChange={syncEngineState}
-        onCopyReact={handleCopyReact}
-        onCopyHtml={handleCopyHtml}
-        copyReactLabel={copyReactLabel}
-        copyHtmlLabel={copyHtmlLabel}
-      />
+    <div className="relative h-dvh overflow-hidden bg-black text-white text-[13px]">
       <Stage
         state={state}
+        defaults={DEFAULTS}
         engineRef={engineRef}
         onEngineReady={handleEngineReady}
         onModeChange={handleModeChange}
         onSplitChange={handleSplitChange}
         onZoomPan={handleZoomPan}
+        onStateChange={syncEngineState}
+        onFileLoad={handleFileLoad}
+        onCopyReact={handleCopyReact}
+        onCopyHtml={handleCopyHtml}
+        copyReactLabel={copyReactLabel}
+        copyHtmlLabel={copyHtmlLabel}
         imageSizeBytes={imageSizeBytes}
         shaderSizeBytes={shaderSizeBytes}
+        bgColors={bgColors}
       />
     </div>
   );
