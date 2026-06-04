@@ -1,11 +1,30 @@
 {
-  "name": "tinygradient",
+  "name": "tiny-gradient-shader",
   "version": "0.1.0",
   "private": true,
+  "description": "Turn any gradient image into a tiny, resolution-independent, animatable GPU shader",
+  "license": "MIT",
+  "homepage": "https://tinygradient.halodesign.io",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/halodesign/tiny-gradient"
+  },
+  "keywords": [
+    "gradient",
+    "webgl",
+    "shader",
+    "image-compression",
+    "react",
+    "gpu"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "next start"
+    "start": "next start",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "framer-motion": "^12.40.0",

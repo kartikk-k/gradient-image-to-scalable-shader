@@ -55,42 +55,65 @@ function compileShader(
   type: number,
   src: string
 ): WebGLShader {
-  const s = gl.createShader(type)!;
+  const s = gl.createShader(type);
+  if (!s) throw new Error("Failed to create shader");
   gl.shaderSource(s, src);
   gl.compileShader(s);
   if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) {
-    console.error(gl.getShaderInfoLog(s));
+    const log = gl.getShaderInfoLog(s);
+    gl.deleteShader(s);
+    throw new Error("Shader compile error: " + log);
   }
   return s;
 }
 
 export interface GLEngine {
   rebuildTexture: () => void;
+  bakeDataURL: () => void;
   uploadSourceFull: () => void;
   resize: () => void;
   destroy: () => void;
+  markDirty: () => void;
   state: GradientState;
-  getCurrentTexSize: () => [number, number];
   sampleColors: () => string[];
 }
 
 export function createGLEngine(
   canvas: HTMLCanvasElement,
   container: HTMLElement,
-  onFps: (fps: number) => void
 ): GLEngine {
-  const gl = canvas.getContext("webgl", {
+  const glOrNull = canvas.getContext("webgl", {
     antialias: true,
     preserveDrawingBuffer: false,
-  })!;
+  });
+  if (!glOrNull) throw new Error("WebGL not supported");
+  const gl = glOrNull;
+
+  let contextLost = false;
+
+  canvas.addEventListener("webglcontextlost", (e) => {
+    e.preventDefault();
+    contextLost = true;
+    cancelAnimationFrame(animId);
+  });
+
+  canvas.addEventListener("webglcontextrestored", () => {
+    contextLost = false;
+    animId = requestAnimationFrame(frame);
+  });
 
   const state = createDefaultState();
   let currentTexSize: [number, number] = [2, 2];
+  let dirty = true;
 
-  const prog = gl.createProgram()!;
+  const prog = gl.createProgram();
+  if (!prog) throw new Error("Failed to create program");
   gl.attachShader(prog, compileShader(gl, gl.VERTEX_SHADER, VERT));
   gl.attachShader(prog, compileShader(gl, gl.FRAGMENT_SHADER, FRAG));
   gl.linkProgram(prog);
+  if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) {
+    throw new Error("Program link error: " + gl.getProgramInfoLog(prog));
+  }
   gl.useProgram(prog);
 
   const buf = gl.createBuffer();
@@ -170,8 +193,15 @@ export function createGLEngine(
       gl.UNSIGNED_BYTE,
       sampleCanvas
     );
-    state.dataURL = sampleCanvas.toDataURL("image/png");
+    state.dataURL = null;
     currentTexSize = [gw, gh];
+    dirty = true;
+  }
+
+  function bakeDataURL() {
+    if (!state.dataURL) {
+      state.dataURL = sampleCanvas.toDataURL("image/png");
+    }
   }
 
   const fullTexCanvas = document.createElement("canvas");
@@ -179,9 +209,16 @@ export function createGLEngine(
 
   function uploadSourceFull() {
     if (!state.img) return;
-    fullTexCanvas.width = state.imgW;
-    fullTexCanvas.height = state.imgH;
-    fctx.drawImage(state.img, 0, 0);
+    const maxSize = gl.getParameter(gl.MAX_TEXTURE_SIZE) as number;
+    if (state.imgW > maxSize || state.imgH > maxSize) {
+      const scale = maxSize / Math.max(state.imgW, state.imgH);
+      fullTexCanvas.width = Math.round(state.imgW * scale);
+      fullTexCanvas.height = Math.round(state.imgH * scale);
+    } else {
+      fullTexCanvas.width = state.imgW;
+      fullTexCanvas.height = state.imgH;
+    }
+    fctx.drawImage(state.img, 0, 0, fullTexCanvas.width, fullTexCanvas.height);
     gl.bindTexture(gl.TEXTURE_2D, textureFull);
     gl.texImage2D(
       gl.TEXTURE_2D,
@@ -191,6 +228,7 @@ export function createGLEngine(
       gl.UNSIGNED_BYTE,
       fullTexCanvas
     );
+    dirty = true;
   }
 
   function resize() {
@@ -199,17 +237,18 @@ export function createGLEngine(
     canvas.width = Math.round(r.width * dpr);
     canvas.height = Math.round(r.height * dpr);
     gl.viewport(0, 0, gl.drawingBufferWidth, gl.drawingBufferHeight);
+    dirty = true;
   }
 
-  let lastT = performance.now();
-  let frames = 0;
-  let fpsT = 0;
   const t0 = performance.now();
   let animId: number;
 
   function frame(now: number) {
     animId = requestAnimationFrame(frame);
-    if (!state.img) return;
+    if (contextLost || !state.img) return;
+    const isAnimating = state.animMode > 0;
+    if (!isAnimating && !dirty) return;
+    dirty = false;
     const time = (now - t0) / 1000;
     const modeVal = state.mode === "shader" ? 0 : state.mode === "source" ? 1 : 2;
 
@@ -223,7 +262,6 @@ export function createGLEngine(
     gl.bindTexture(gl.TEXTURE_2D, textureFull);
     gl.uniform1i(U.texFull, 1);
 
-    const isAnimating = state.animMode > 0;
     gl.uniform2f(U.texSize, currentTexSize[0], currentTexSize[1]);
     gl.uniform1f(U.time, isAnimating ? time : 0);
     gl.uniform1f(U.flow, state.flow);
@@ -240,15 +278,6 @@ export function createGLEngine(
     gl.uniform1f(U.hueShift, state.hueShift);
     gl.uniform2f(U.resolution, gl.drawingBufferWidth, gl.drawingBufferHeight);
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
-
-    frames++;
-    fpsT += now - lastT;
-    lastT = now;
-    if (fpsT > 500) {
-      onFps(Math.round(frames / (fpsT / 1000)));
-      frames = 0;
-      fpsT = 0;
-    }
   }
   animId = requestAnimationFrame(frame);
 
@@ -256,19 +285,17 @@ export function createGLEngine(
     const w = sampleCanvas.width;
     const h = sampleCanvas.height;
     if (w < 2 || h < 2) return ["#1a1a1a", "#1a1a1a", "#1a1a1a"];
-
-    // Sample 5 points: corners + center, then darken for background use
+    const data = sctx.getImageData(0, 0, w, h).data;
     const points = [
       [0, 0], [w - 1, 0], [Math.floor(w / 2), Math.floor(h / 2)],
       [0, h - 1], [w - 1, h - 1],
     ];
     const colors: string[] = [];
     for (const [px, py] of points) {
-      const d = sctx.getImageData(px, py, 1, 1).data;
-      // Keep at ~50% brightness + boost floor so darks still have color
-      const r = Math.round(d[0] * 0.5 + 15);
-      const g = Math.round(d[1] * 0.5 + 15);
-      const b = Math.round(d[2] * 0.5 + 15);
+      const i = (py * w + px) * 4;
+      const r = Math.round(data[i] * 0.5 + 15);
+      const g = Math.round(data[i + 1] * 0.5 + 15);
+      const b = Math.round(data[i + 2] * 0.5 + 15);
       colors.push(`rgb(${r},${g},${b})`);
     }
     return colors;
@@ -276,11 +303,22 @@ export function createGLEngine(
 
   return {
     rebuildTexture,
+    bakeDataURL,
     uploadSourceFull,
     resize,
     state,
-    getCurrentTexSize: () => currentTexSize,
     sampleColors,
-    destroy: () => cancelAnimationFrame(animId),
+    markDirty: () => { dirty = true; },
+    destroy: () => {
+      cancelAnimationFrame(animId);
+      gl.deleteTexture(texture);
+      gl.deleteTexture(textureFull);
+      gl.deleteBuffer(buf);
+      gl.deleteProgram(prog);
+      sampleCanvas.width = 0;
+      sampleCanvas.height = 0;
+      fullTexCanvas.width = 0;
+      fullTexCanvas.height = 0;
+    },
   };
 }

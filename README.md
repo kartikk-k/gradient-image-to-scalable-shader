@@ -72,6 +72,10 @@ Gradients are low-frequency signals — smooth transitions between colors. A 604
 
 This only works for gradients and smooth imagery. Photos with sharp edges, text, or fine detail need real image compression.
 
+## License
+
+[MIT](LICENSE)
+
 ---
 
 A [halodesign.io](https://halodesign.io) product.

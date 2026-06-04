@@ -9,25 +9,7 @@ void main(){
   gl_Position = vec4(aPos, 0.0, 1.0);
 }`;
 
-export const FRAG = `precision highp float;
-varying vec2 vUv;
-uniform sampler2D uTex;
-uniform sampler2D uTexFull;
-uniform vec2  uTexSize;
-uniform float uTime;
-uniform float uFlow;
-uniform float uSpeed;
-uniform float uScale;
-uniform float uQuality;
-uniform float uNoise;
-uniform float uNoiseScale;
-uniform float uMode;        // 0 = shader, 1 = source, 2 = compare
-uniform float uSplit;
-uniform float uAnimMode;    // 0 = none, 1..10 = animation types
-uniform float uHueShift;    // hue rotation in radians
-uniform vec2  uResolution;
-
-vec4 cubicWeights(float v){
+export const GLSL_UTILITIES = `vec4 cubicWeights(float v){
   vec4 n = vec4(1.0, 2.0, 3.0, 4.0) - v;
   vec4 s = n * n * n;
   float x = s.x;
@@ -78,9 +60,9 @@ vec3 hueRotate(vec3 c, float angle){
     co + (1.0 - co) * w.z
   );
   return vec3(dot(c, r), dot(c, g), dot(c, b));
-}
+}`;
 
-// --- Animation modes ---
+export const GLSL_WARP_FUNCTIONS = `// --- Animation modes ---
 // Each returns a warped UV. All use uFlow as intensity, uScale as detail.
 
 // 1: Organic flow (original) — multi-octave sinusoidal domain warp
@@ -159,14 +141,6 @@ vec2 warpRipple(vec2 uv, float t){
   return uv + c * wave * uFlow * 0.15;
 }
 
-// 10: Glitch — stepped horizontal displacement bands
-vec2 warpGlitch(vec2 uv, float t){
-  float band = floor(uv.y * uScale * 4.0);
-  float shift = hash(vec2(band, floor(t * 2.0))) * 2.0 - 1.0;
-  float active = step(0.7, hash(vec2(band + 100.0, floor(t * 3.0))));
-  return uv + vec2(shift * uFlow * 0.08 * active, 0.0);
-}
-
 vec2 warp(vec2 uv, float t){
   // animMode 0 = no animation (identity)
   if(uAnimMode < 0.5) return uv;
@@ -178,9 +152,30 @@ vec2 warp(vec2 uv, float t){
   if(uAnimMode < 6.5) return warpBreathe(uv, t);
   if(uAnimMode < 7.5) return warpDrift(uv, t);
   if(uAnimMode < 8.5) return warpLiquid(uv, t);
-  if(uAnimMode < 9.5) return warpRipple(uv, t);
-  return warpGlitch(uv, t);
-}
+  return warpRipple(uv, t);
+}`;
+
+export const FRAG = `precision highp float;
+varying vec2 vUv;
+uniform sampler2D uTex;
+uniform sampler2D uTexFull;
+uniform vec2  uTexSize;
+uniform float uTime;
+uniform float uFlow;
+uniform float uSpeed;
+uniform float uScale;
+uniform float uQuality;
+uniform float uNoise;
+uniform float uNoiseScale;
+uniform float uMode;        // 0 = shader, 1 = source, 2 = compare
+uniform float uSplit;
+uniform float uAnimMode;    // 0 = none, 1..10 = animation types
+uniform float uHueShift;    // hue rotation in radians
+uniform vec2  uResolution;
+
+${GLSL_UTILITIES}
+
+${GLSL_WARP_FUNCTIONS}
 
 vec3 shaderColor(float t){
   vec2 uv = warp(vUv, t);
@@ -214,11 +209,6 @@ void main(){
       col = shaderColor(t);
     } else {
       col = texture2D(uTexFull, vUv).rgb;
-    }
-    float px = gl_FragCoord.x;
-    float splitPx = uResolution.x * uSplit;
-    if(abs(px - splitPx) < 1.0){
-      col = vec3(1.0);
     }
   }
 
