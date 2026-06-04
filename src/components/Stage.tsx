@@ -128,7 +128,7 @@ export default function Stage({
 
   useEffect(() => {
     if (!canvasRef.current || !containerRef.current) return;
-    const engine = createGLEngine(canvasRef.current, containerRef.current, () => {});
+    const engine = createGLEngine(canvasRef.current, containerRef.current, () => { });
     onEngineReady(engine);
     const onResize = () => engine.resize();
     window.addEventListener("resize", onResize);
@@ -261,7 +261,7 @@ export default function Stage({
       )}
 
       {/* Top bar */}
-      <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20 flex items-center gap-1">
+      <div className="absolute top-6 md:top-3 left-1/2 -translate-x-1/2 z-20 flex items-center gap-1 w-[calc(100%-24px)] md:w-auto justify-between">
         {hasImage && (
           <>
             {/* Mode tabs */}
@@ -277,7 +277,7 @@ export default function Stage({
                 </button>
               ))}
             </div>
-
+            <div className="flex-1 md:hidden" />
             {/* View size tabs */}
             <div className="flex gap-px bg-black/60 backdrop-blur-md p-0.5 rounded-full h-[36px]">
               {([
@@ -296,19 +296,20 @@ export default function Stage({
                 </button>
               ))}
             </div>
+            {/* Settings toggle */}
+            <button
+              className="size-[36px] rounded-full bg-black/60 backdrop-blur-md flex items-center justify-center cursor-pointer text-white/50 hover:text-white transition-colors"
+              onClick={() => setShowControls(!showControls)}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M12.22 2h-.44a2 2 0 00-2 2v.18a2 2 0 01-1 1.73l-.43.25a2 2 0 01-2 0l-.15-.08a2 2 0 00-2.73.73l-.22.38a2 2 0 00.73 2.73l.15.1a2 2 0 011 1.72v.51a2 2 0 01-1 1.74l-.15.09a2 2 0 00-.73 2.73l.22.38a2 2 0 002.73.73l.15-.08a2 2 0 012 0l.43.25a2 2 0 011 1.73V20a2 2 0 002 2h.44a2 2 0 002-2v-.18a2 2 0 011-1.73l.43-.25a2 2 0 012 0l.15.08a2 2 0 002.73-.73l.22-.39a2 2 0 00-.73-2.73l-.15-.08a2 2 0 01-1-1.74v-.5a2 2 0 011-1.74l.15-.09a2 2 0 00.73-2.73l-.22-.38a2 2 0 00-2.73-.73l-.15.08a2 2 0 01-2 0l-.43-.25a2 2 0 01-1-1.73V4a2 2 0 00-2-2z" />
+                <circle cx="12" cy="12" r="3" />
+              </svg>
+            </button>
           </>
         )}
 
-        {/* Settings toggle */}
-        <button
-          className="size-[36px] rounded-full bg-black/60 backdrop-blur-md flex items-center justify-center cursor-pointer text-white/50 hover:text-white transition-colors"
-          onClick={() => setShowControls(!showControls)}
-        >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M12.22 2h-.44a2 2 0 00-2 2v.18a2 2 0 01-1 1.73l-.43.25a2 2 0 01-2 0l-.15-.08a2 2 0 00-2.73.73l-.22.38a2 2 0 00.73 2.73l.15.1a2 2 0 011 1.72v.51a2 2 0 01-1 1.74l-.15.09a2 2 0 00-.73 2.73l.22.38a2 2 0 002.73.73l.15-.08a2 2 0 012 0l.43.25a2 2 0 011 1.73V20a2 2 0 002 2h.44a2 2 0 002-2v-.18a2 2 0 011-1.73l.43-.25a2 2 0 012 0l.15.08a2 2 0 002.73-.73l.22-.39a2 2 0 00-.73-2.73l-.15-.08a2 2 0 01-1-1.74v-.5a2 2 0 011-1.74l.15-.09a2 2 0 00.73-2.73l-.22-.38a2 2 0 00-2.73-.73l-.15.08a2 2 0 01-2 0l-.43-.25a2 2 0 01-1-1.73V4a2 2 0 00-2-2z" />
-            <circle cx="12" cy="12" r="3" />
-          </svg>
-        </button>
+
       </div>
 
       {/* Floating controls panel */}
@@ -320,71 +321,82 @@ export default function Stage({
           <div className="bg-black/60 backdrop-blur-2xl rounded-3xl p-5 pb-0 shadow-2xl overflow-hidden">
 
             <div className="space-y-1">
-                <GlassSlider label="Samples" value={state.res} min={4} max={256} step={2} format={(v) => `${v}`} onChange={(v) => onStateChange({ res: v })} />
-                {/* <GlassSlider label="Hue" value={state.hueShift} min={-3.14159} max={3.14159} step={0.01} format={(v) => `${Math.round((v / Math.PI) * 180)}°`} onChange={(v) => onStateChange({ hueShift: v })} /> */}
-                <GlassSlider label="Noise" value={state.noise} min={0} max={0.5} step={0.005} format={(v) => v.toFixed(3)} onChange={(v) => onStateChange({ noise: v })} />
+              <GlassSlider label="Samples" value={state.res} min={4} max={256} step={2} format={(v) => `${v}`} onChange={(v) => onStateChange({ res: v })} />
+              {/* <GlassSlider label="Hue" value={state.hueShift} min={-3.14159} max={3.14159} step={0.01} format={(v) => `${Math.round((v / Math.PI) * 180)}°`} onChange={(v) => onStateChange({ hueShift: v })} /> */}
+              <GlassSlider label="Noise" value={state.noise} min={0} max={0.5} step={0.005} format={(v) => v.toFixed(3)} onChange={(v) => onStateChange({ noise: v })} />
 
-                {/* Animation pills */}
-                <div className="flex items-start gap-2 pt-1">
-                  <span className="text-[11px] text-white/60 w-14 shrink-0">Animation</span>
-                  <div className="flex flex-wrap gap-1">
-                    {ANIM_MODES.map((m) => (
-                      <button
-                        key={m.id}
-                        className={`h-6 px-2.5 rounded-lg text-[12px] cursor-pointer transition-all
+              {/* Animation pills */}
+              <div className="flex items-start gap-2 pt-1">
+                <span className="text-[11px] text-white/60 w-14 shrink-0">Animation</span>
+                <div className="flex flex-wrap gap-1">
+                  {ANIM_MODES.map((m) => (
+                    <button
+                      key={m.id}
+                      className={`h-6 px-2.5 rounded-lg text-[12px] cursor-pointer transition-all
                           ${state.animMode === m.id
-                            ? "bg-white text-black font-medium"
-                            : "bg-white/10 text-white/60 hover:bg-white/20"
-                          }`}
-                        onClick={() => onStateChange({ animMode: m.id })}
-                      >
-                        {m.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <AnimatePresence initial={false}>
-                  {state.animMode > 0 && (
-                    <motion.div
-                      key="anim-sliders"
-                      initial={{ height: 0, opacity: 0 }}
-                      animate={{ height: "auto", opacity: 1 }}
-                      exit={{ height: 0, opacity: 0 }}
-                      transition={{ duration: 0.32, ease: [0.22, 1, 0.36, 1] }}
-                      className="overflow-hidden"
+                          ? "bg-white text-black font-medium"
+                          : "bg-white/10 text-white/60 hover:bg-white/20"
+                        }`}
+                      onClick={() => onStateChange({ animMode: m.id })}
                     >
-                      <div className="space-y-1 pt-1">
-                        <GlassSlider label="Flow" value={state.flow} min={0} max={1} step={0.01} format={(v) => v.toFixed(2)} onChange={(v) => onStateChange({ flow: v })} />
-                        <GlassSlider label="Speed" value={state.speed} min={0} max={2} step={0.01} format={(v) => v.toFixed(2)} onChange={(v) => onStateChange({ speed: v })} />
-                      </div>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
+                      {m.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
 
-                {/* Export buttons */}
-                <div className="flex gap-2 p-4 mt-2 border-t border-white/20 relative -left-5 w-[calc(100%+40px)]">
-                  <button
-                    className="flex-1 py-2 h-10 rounded-full bg-white/30 text-white text-xs font-medium cursor-pointer hover:bg-white/50 transition-colors"
-                    onClick={onCopyReact}
+              <AnimatePresence initial={false}>
+                {state.animMode > 0 && (
+                  <motion.div
+                    key="anim-sliders"
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: "auto", opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    transition={{ duration: 0.32, ease: [0.22, 1, 0.36, 1] }}
+                    className="overflow-hidden"
                   >
-                    {copyReactLabel}
-                  </button>
-                  {/* <button
+                    <div className="space-y-1 pt-1">
+                      <GlassSlider label="Flow" value={state.flow} min={0} max={1} step={0.01} format={(v) => v.toFixed(2)} onChange={(v) => onStateChange({ flow: v })} />
+                      <GlassSlider label="Speed" value={state.speed} min={0} max={2} step={0.01} format={(v) => v.toFixed(2)} onChange={(v) => onStateChange({ speed: v })} />
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
+              {/* Export buttons */}
+              <div className="flex gap-2 p-4 mt-2 border-t border-white/20 relative -left-5 w-[calc(100%+40px)]">
+                <button
+                  className="flex-1 py-2 h-10 rounded-full bg-white/30 text-white text-xs font-medium cursor-pointer hover:bg-white/50 transition-colors"
+                  onClick={onCopyReact}
+                >
+                  {copyReactLabel}
+                </button>
+                {/* <button
                     className="flex-1 py-2 rounded-full bg-white/10 text-white/70 text-[11px] font-medium cursor-pointer hover:bg-white/20 transition-colors border border-white/10"
                     onClick={onCopyHtml}
                   >
                     {copyHtmlLabel}
                   </button> */}
-                  <label className="py-2 px-4 rounded-full flex items-center justify-center bg-white/10 text-white/70 text-xs cursor-pointer hover:bg-white/20 transition-colors border border-white/10">
-                    Upload
-                    <input type="file" accept="image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) onFileLoad(f); }} />
-                  </label>
-                </div>
+                <label className="py-2 px-4 rounded-full flex items-center justify-center bg-white/10 text-white/70 text-xs cursor-pointer hover:bg-white/20 transition-colors border border-white/10">
+                  Upload
+                  <input type="file" accept="image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) onFileLoad(f); }} />
+                </label>
               </div>
+            </div>
           </div>
         </div>
       </div>
+
+      {/* Attribution */}
+      <a
+        href="https://halodesign.io"
+        target="_blank"
+        rel="noopener noreferrer"
+        className="absolute top-1 right-4 z-20 text-[10px] text-white/25 hover:text-white/50 transition-colors"
+      // left-1/2 -translate-x-1/2
+      >
+        A halodesign.io product
+      </a>
     </div>
   );
 }
