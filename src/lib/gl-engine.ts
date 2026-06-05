@@ -145,6 +145,7 @@ export function createGLEngine(
     animMode: gl.getUniformLocation(prog, "uAnimMode"),
     hueShift: gl.getUniformLocation(prog, "uHueShift"),
     resolution: gl.getUniformLocation(prog, "uResolution"),
+    cropMode: gl.getUniformLocation(prog, "uCropMode"),
   };
 
   // Shader sampled texture (small grid)
@@ -277,6 +278,7 @@ export function createGLEngine(
     gl.uniform1f(U.animMode, state.animMode);
     gl.uniform1f(U.hueShift, state.hueShift);
     gl.uniform2f(U.resolution, gl.drawingBufferWidth, gl.drawingBufferHeight);
+    gl.uniform1f(U.cropMode, 0);
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
   }
   animId = requestAnimationFrame(frame);

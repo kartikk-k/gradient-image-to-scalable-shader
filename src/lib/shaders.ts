@@ -60,6 +60,18 @@ vec3 hueRotate(vec3 c, float angle){
     co + (1.0 - co) * w.z
   );
   return vec3(dot(c, r), dot(c, g), dot(c, b));
+}
+
+vec2 coverUV(vec2 uv, vec2 texSize, vec2 resolution){
+  float texAspect = texSize.x / texSize.y;
+  float screenAspect = resolution.x / resolution.y;
+  vec2 s = vec2(1.0);
+  if(screenAspect > texAspect){
+    s.y = screenAspect / texAspect;
+  } else {
+    s.x = texAspect / screenAspect;
+  }
+  return (uv - 0.5) / s + 0.5;
 }`;
 
 export const GLSL_WARP_FUNCTIONS = `// --- Animation modes ---
@@ -172,13 +184,16 @@ uniform float uSplit;
 uniform float uAnimMode;    // 0 = none, 1..10 = animation types
 uniform float uHueShift;    // hue rotation in radians
 uniform vec2  uResolution;
+uniform float uCropMode;    // 0 = stretch, 1 = crop (cover)
 
 ${GLSL_UTILITIES}
 
 ${GLSL_WARP_FUNCTIONS}
 
 vec3 shaderColor(float t){
-  vec2 uv = warp(vUv, t);
+  vec2 baseUV = vUv;
+  if(uCropMode > 0.5) baseUV = coverUV(baseUV, uTexSize, uResolution);
+  vec2 uv = warp(baseUV, t);
   vec3 bilinear = texture2D(uTex, uv).rgb;
   vec3 bicubic  = textureBicubic(uTex, uv, uTexSize);
   vec3 col = mix(bilinear, bicubic, uQuality);
@@ -203,12 +218,16 @@ void main(){
   if(uMode < 0.5){
     col = shaderColor(t);
   } else if(uMode < 1.5){
-    col = texture2D(uTexFull, vUv).rgb;
+    vec2 srcUV = vUv;
+    if(uCropMode > 0.5) srcUV = coverUV(srcUV, uTexSize, uResolution);
+    col = texture2D(uTexFull, srcUV).rgb;
   } else {
     if(screenX < uSplit){
       col = shaderColor(t);
     } else {
-      col = texture2D(uTexFull, vUv).rgb;
+      vec2 srcUV = vUv;
+      if(uCropMode > 0.5) srcUV = coverUV(srcUV, uTexSize, uResolution);
+      col = texture2D(uTexFull, srcUV).rgb;
     }
   }
 
