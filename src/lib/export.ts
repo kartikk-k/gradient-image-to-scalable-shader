@@ -68,8 +68,8 @@ export function buildStandalone(state: GradientState): string {
 <style>html,body{margin:0;height:100%;background:#000}canvas{display:block;width:100vw;height:100vh}</style>
 </head><body><canvas id="c"></canvas><script>
 const cv=document.getElementById('c'),gl=cv.getContext('webgl');
-function fit(){const d=Math.min(devicePixelRatio||1,2);cv.width=innerWidth*d;cv.height=innerHeight*d;gl.viewport(0,0,cv.width,cv.height);}
-addEventListener('resize',fit);fit();
+function fit(){const d=Math.min(devicePixelRatio||1,2);cv.width=innerWidth*d;cv.height=innerHeight*d;gl.viewport(0,0,cv.width,cv.height);draw();}
+addEventListener('resize',fit);
 const V=\`${buildVertExport()}\`;
 const F=\`${frag}\`;
 function sh(t,s){const o=gl.createShader(t);gl.shaderSource(o,s);gl.compileShader(o);return o;}
@@ -80,11 +80,13 @@ const tx=gl.createTexture();gl.bindTexture(gl.TEXTURE_2D,tx);
 gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.LINEAR);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.LINEAR);
 gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);
 gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,1,1,0,gl.RGBA,gl.UNSIGNED_BYTE,new Uint8Array([0,0,0,255]));
-const im=new Image();im.onload=()=>{gl.bindTexture(gl.TEXTURE_2D,tx);gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,im);};
+const im=new Image();im.onload=()=>{gl.bindTexture(gl.TEXTURE_2D,tx);gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,im);draw();};
 im.src="${sanitizeDataURL(state.dataURL)}";
 const uT=gl.getUniformLocation(p,'uTime'),uF=gl.getUniformLocation(p,'uFlow'),uS=gl.getUniformLocation(p,'uSpeed'),uC=gl.getUniformLocation(p,'uScale'),uTex=gl.getUniformLocation(p,'uTex'),uTS=gl.getUniformLocation(p,'uTexSize'),uQ=gl.getUniformLocation(p,'uQuality'),uN=gl.getUniformLocation(p,'uNoise'),uNS=gl.getUniformLocation(p,'uNoiseScale'),uAM=gl.getUniformLocation(p,'uAnimMode'),uHS=gl.getUniformLocation(p,'uHueShift'),uCM=gl.getUniformLocation(p,'uCropMode'),uR=gl.getUniformLocation(p,'uResolution');
-const t0=performance.now();
-(function loop(n){requestAnimationFrame(loop);gl.uniform1i(uTex,0);gl.uniform2f(uTS,${state.gridW},${state.gridH});gl.uniform1f(uT,${state.animMode > 0 ? "(n-t0)/1000" : "0"});gl.uniform1f(uF,${state.flow});gl.uniform1f(uS,${state.speed});gl.uniform1f(uC,${state.scale});gl.uniform1f(uQ,${state.quality});gl.uniform1f(uN,${state.noise});gl.uniform1f(uNS,${state.noiseScale});gl.uniform1f(uAM,${state.animMode});gl.uniform1f(uHS,${state.hueShift});gl.uniform1f(uCM,1);gl.uniform2f(uR,cv.width,cv.height);gl.drawArrays(gl.TRIANGLE_STRIP,0,4);})(t0);
+const ANIM=${state.animMode > 0},t0=performance.now();
+function draw(n){n=n||performance.now();gl.uniform1i(uTex,0);gl.uniform2f(uTS,${state.gridW},${state.gridH});gl.uniform1f(uT,ANIM?(n-t0)/1000:0);gl.uniform1f(uF,${state.flow});gl.uniform1f(uS,${state.speed});gl.uniform1f(uC,${state.scale});gl.uniform1f(uQ,${state.quality});gl.uniform1f(uN,${state.noise});gl.uniform1f(uNS,${state.noiseScale});gl.uniform1f(uAM,${state.animMode});gl.uniform1f(uHS,${state.hueShift});gl.uniform1f(uCM,1);gl.uniform2f(uR,cv.width,cv.height);gl.drawArrays(gl.TRIANGLE_STRIP,0,4);}
+function loop(n){draw(n);if(ANIM)requestAnimationFrame(loop);}
+fit();requestAnimationFrame(loop);
 <\/script></body></html>`;
 }
 
@@ -156,6 +158,7 @@ export default function GradientShader({
     img.onload = () => {
       gl.bindTexture(gl.TEXTURE_2D, tex);
       gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, img);
+      draw();
     };
     img.src = "${sanitizeDataURL(state.dataURL)}";
 
@@ -175,23 +178,17 @@ export default function GradientShader({
       resolution: gl.getUniformLocation(prog, "uResolution"),
     };
 
-    function resize() {
-      const dpr = Math.min(devicePixelRatio || 1, 2);
-      canvas!.width = Math.round(canvas!.clientWidth * dpr);
-      canvas!.height = Math.round(canvas!.clientHeight * dpr);
-      gl.viewport(0, 0, gl.drawingBufferWidth, gl.drawingBufferHeight);
-    }
-
-    const observer = new ResizeObserver(resize);
-    observer.observe(canvas);
-    resize();
-
+    // animMode 0 is a static gradient — render once instead of running a
+    // permanent requestAnimationFrame loop that re-renders an identical frame.
+    const animated = ${state.animMode > 0};
     const t0 = performance.now();
-    let animId: number;
+    let animId = 0;
+    let running = false;
+    let disposed = false;
 
-    function frame(now: number) {
-      animId = requestAnimationFrame(frame);
-      const t = ${state.animMode > 0 ? "(now - t0) / 1000" : "0"};
+    function draw() {
+      if (disposed) return;
+      const t = animated ? (performance.now() - t0) / 1000 : 0;
       gl.uniform1i(U.tex, 0);
       gl.uniform2f(U.texSize, ${state.gridW}, ${state.gridH});
       gl.uniform1f(U.time, t);
@@ -207,13 +204,57 @@ export default function GradientShader({
       gl.uniform2f(U.resolution, gl.drawingBufferWidth, gl.drawingBufferHeight);
       gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
     }
-    animId = requestAnimationFrame(frame);
+
+    function loop() {
+      if (disposed || !running) return;
+      draw();
+      animId = requestAnimationFrame(loop);
+    }
+
+    function start() {
+      if (!animated || running || disposed) return;
+      running = true;
+      animId = requestAnimationFrame(loop);
+    }
+
+    function stop() {
+      running = false;
+      cancelAnimationFrame(animId);
+    }
+
+    function resize() {
+      const dpr = Math.min(devicePixelRatio || 1, 2);
+      canvas!.width = Math.round(canvas!.clientWidth * dpr);
+      canvas!.height = Math.round(canvas!.clientHeight * dpr);
+      gl.viewport(0, 0, gl.drawingBufferWidth, gl.drawingBufferHeight);
+      draw();
+    }
+
+    const resizeObserver = new ResizeObserver(resize);
+    resizeObserver.observe(canvas);
+    resize();
+
+    // Only animate while the canvas is actually on screen.
+    const visObserver = new IntersectionObserver(
+      ([entry]) => (entry.isIntersecting ? start() : stop()),
+      { threshold: 0 }
+    );
+    visObserver.observe(canvas);
+
+    if (animated) start();
+    else draw();
 
     return () => {
-      cancelAnimationFrame(animId);
-      observer.disconnect();
+      disposed = true;
+      stop();
+      resizeObserver.disconnect();
+      visObserver.disconnect();
+      gl.deleteTexture(tex);
+      gl.deleteBuffer(buf);
+      gl.deleteProgram(prog);
+      gl.getExtension("WEBGL_lose_context")?.loseContext();
     };
-  }, []);
+  }, [mode]);
 
   return (
     <canvas
