@@ -88,6 +88,7 @@ export default function LiveShaderView({ item }: { item: CollectionItem }) {
     img.onload = () => {
       gl.bindTexture(gl.TEXTURE_2D, tex);
       gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, img);
+      draw();
     };
     img.src = item.dataURL;
 
@@ -107,23 +108,17 @@ export default function LiveShaderView({ item }: { item: CollectionItem }) {
       resolution: gl.getUniformLocation(prog, "uResolution"),
     };
 
-    function resize() {
-      const dpr = Math.min(devicePixelRatio || 1, 2);
-      canvas!.width = Math.round(canvas!.clientWidth * dpr);
-      canvas!.height = Math.round(canvas!.clientHeight * dpr);
-      gl!.viewport(0, 0, gl!.drawingBufferWidth, gl!.drawingBufferHeight);
-    }
-
-    const observer = new ResizeObserver(resize);
-    observer.observe(canvas);
-    resize();
-
+    // animMode 0 is a static gradient — render once instead of running a
+    // permanent requestAnimationFrame loop that re-renders an identical frame.
+    const animated = item.animMode > 0;
     const t0 = performance.now();
-    let animId: number;
+    let animId = 0;
+    let running = false;
+    let disposed = false;
 
-    function frame(now: number) {
-      animId = requestAnimationFrame(frame);
-      const t = item.animMode > 0 ? (now - t0) / 1000 : 0;
+    function draw() {
+      if (disposed) return;
+      const t = animated ? (performance.now() - t0) / 1000 : 0;
       gl!.uniform1i(U.tex, 0);
       gl!.uniform2f(U.texSize, item.gridW, item.gridH);
       gl!.uniform1f(U.time, t);
@@ -139,16 +134,57 @@ export default function LiveShaderView({ item }: { item: CollectionItem }) {
       gl!.uniform2f(U.resolution, gl!.drawingBufferWidth, gl!.drawingBufferHeight);
       gl!.drawArrays(gl!.TRIANGLE_STRIP, 0, 4);
     }
-    animId = requestAnimationFrame(frame);
+
+    function loop() {
+      if (disposed || !running) return;
+      draw();
+      animId = requestAnimationFrame(loop);
+    }
+
+    function start() {
+      if (!animated || running || disposed) return;
+      running = true;
+      animId = requestAnimationFrame(loop);
+    }
+
+    function stop() {
+      running = false;
+      cancelAnimationFrame(animId);
+    }
+
+    function resize() {
+      const dpr = Math.min(devicePixelRatio || 1, 2);
+      canvas!.width = Math.round(canvas!.clientWidth * dpr);
+      canvas!.height = Math.round(canvas!.clientHeight * dpr);
+      gl!.viewport(0, 0, gl!.drawingBufferWidth, gl!.drawingBufferHeight);
+      draw();
+    }
+
+    const resizeObserver = new ResizeObserver(resize);
+    resizeObserver.observe(canvas);
+    resize();
+
+    // Only animate while the canvas is actually on screen.
+    const visObserver = new IntersectionObserver(
+      ([entry]) => (entry.isIntersecting ? start() : stop()),
+      { threshold: 0 }
+    );
+    visObserver.observe(canvas);
+
+    if (animated) start();
+    else draw();
 
     return () => {
-      cancelAnimationFrame(animId);
-      observer.disconnect();
+      disposed = true;
+      stop();
+      resizeObserver.disconnect();
+      visObserver.disconnect();
       gl.deleteTexture(tex);
       gl.deleteBuffer(buf);
       gl.deleteProgram(prog);
       gl.deleteShader(vs);
       gl.deleteShader(fs);
+      gl.getExtension("WEBGL_lose_context")?.loseContext();
     };
   }, [item]);
 
