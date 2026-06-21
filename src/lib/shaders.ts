@@ -167,6 +167,54 @@ vec2 warp(vec2 uv, float t){
   return warpRipple(uv, t);
 }`;
 
+export const GLSL_EFFECT_FUNCTIONS = `// --- Overlay effects (a stylized layer applied on top of the gradient) ---
+// uEffect:      0 none, 1 pixelate, 2 dots, 3 halftone, 4 scanlines, 5 crosshatch
+// uEffectScale: cell / block size in pixels (larger = chunkier)
+
+// Pixelate snaps the sampling UV into a block grid so the gradient
+// reconstructs as crisp rectangles instead of a smooth field.
+vec2 pixelateUV(vec2 uv, vec2 resolution, float size){
+  vec2 blocks = max(resolution / max(size, 1.0), vec2(1.0));
+  return (floor(uv * blocks) + 0.5) / blocks;
+}
+
+// Applies the screen-space overlay effects (modes 2..5) to an already
+// shaded colour. Pixelate (mode 1) is handled before sampling instead.
+vec3 applyEffect(vec3 col, vec2 fragCoord){
+  float size = max(uEffectScale, 2.0);
+  // 2: Dots — even ink-dot screen, dots punched darker over the colour.
+  if(uEffect > 1.5 && uEffect < 2.5){
+    vec2 g = mod(fragCoord, size) / size - 0.5;
+    float d = length(g);
+    float m = 1.0 - smoothstep(0.34, 0.42, d);
+    col = mix(col, col * 0.45, m);
+  }
+  // 3: Halftone — classic print look, dot radius grows in darker areas.
+  else if(uEffect > 2.5 && uEffect < 3.5){
+    float lum = dot(col, vec3(0.299, 0.587, 0.114));
+    vec2 g = mod(fragCoord, size) / size - 0.5;
+    float d = length(g);
+    float radius = sqrt(1.0 - clamp(lum, 0.0, 1.0)) * 0.6;
+    float m = 1.0 - smoothstep(radius - 0.08, radius, d);
+    col = mix(vec3(1.0), col, m);
+  }
+  // 4: Scanlines — soft horizontal CRT banding.
+  else if(uEffect > 3.5 && uEffect < 4.5){
+    float s = sin(fragCoord.y / size * 3.14159265);
+    col *= 0.7 + 0.3 * s * s;
+  }
+  // 5: Crosshatch — diagonal ink hatching that builds up in the shadows.
+  else if(uEffect > 4.5){
+    float lum = dot(col, vec3(0.299, 0.587, 0.114));
+    float h = 1.0;
+    if(lum < 0.85) h *= smoothstep(0.0, 0.6, abs(mod(fragCoord.x + fragCoord.y, size) / size - 0.5) * 2.0);
+    if(lum < 0.55) h *= smoothstep(0.0, 0.6, abs(mod(fragCoord.x - fragCoord.y, size) / size - 0.5) * 2.0);
+    if(lum < 0.30) h *= smoothstep(0.0, 0.6, abs(mod(fragCoord.x + fragCoord.y, size * 0.5) / (size * 0.5) - 0.5) * 2.0);
+    col = mix(vec3(0.04), col, h);
+  }
+  return col;
+}`;
+
 export const FRAG = `precision highp float;
 varying vec2 vUv;
 uniform sampler2D uTex;
@@ -183,6 +231,8 @@ uniform float uMode;        // 0 = shader, 1 = source, 2 = compare
 uniform float uSplit;
 uniform float uAnimMode;    // 0 = none, 1..10 = animation types
 uniform float uHueShift;    // hue rotation in radians
+uniform float uEffect;      // 0 = none, 1..5 = overlay effect types
+uniform float uEffectScale; // overlay cell / block size in pixels
 uniform vec2  uResolution;
 uniform float uCropMode;    // 0 = stretch, 1 = crop (cover)
 
@@ -190,9 +240,12 @@ ${GLSL_UTILITIES}
 
 ${GLSL_WARP_FUNCTIONS}
 
+${GLSL_EFFECT_FUNCTIONS}
+
 vec3 shaderColor(float t){
   vec2 baseUV = vUv;
   if(uCropMode > 0.5) baseUV = coverUV(baseUV, uTexSize, uResolution);
+  if(uEffect > 0.5 && uEffect < 1.5) baseUV = pixelateUV(baseUV, uResolution, uEffectScale);
   vec2 uv = warp(baseUV, t);
   vec3 bilinear = texture2D(uTex, uv).rgb;
   vec3 bicubic  = textureBicubic(uTex, uv, uTexSize);
@@ -206,6 +259,7 @@ vec3 shaderColor(float t){
     col += n * uNoise;
   }
   if(uHueShift != 0.0) col = hueRotate(col, uHueShift);
+  if(uEffect > 1.5) col = applyEffect(col, gl_FragCoord.xy);
   return col;
 }
 
@@ -245,4 +299,13 @@ export const ANIM_MODES = [
   { id: 7, label: "Drift" },
   { id: 8, label: "Liquid" },
   { id: 9, label: "Ripple" },
+] as const;
+
+export const EFFECT_MODES = [
+  { id: 0, label: "None" },
+  { id: 1, label: "Pixelate" },
+  { id: 2, label: "Dots" },
+  { id: 3, label: "Halftone" },
+  { id: 4, label: "Scanlines" },
+  { id: 5, label: "Crosshatch" },
 ] as const;

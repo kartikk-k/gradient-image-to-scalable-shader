@@ -1,5 +1,5 @@
 import type { GradientState } from "./gl-engine";
-import { GLSL_UTILITIES, GLSL_WARP_FUNCTIONS } from "./shaders";
+import { GLSL_UTILITIES, GLSL_WARP_FUNCTIONS, GLSL_EFFECT_FUNCTIONS } from "./shaders";
 
 const DATA_URL_RE = /^data:image\/(png|jpeg|webp|gif);base64,[A-Za-z0-9+/=]+$/;
 
@@ -24,6 +24,8 @@ uniform float uNoise;      // ${state.noise.toFixed(3)} suggested  (0 = none, st
 uniform float uNoiseScale;  // ${state.noiseScale.toFixed(1)} suggested  (grain size in px)
 uniform float uAnimMode;    // ${state.animMode} (0=none,1=organic,2=hwave,3=vwave,4=pulse,5=swirl,6=breathe,7=drift,8=liquid,9=ripple)
 uniform float uHueShift;    // ${state.hueShift.toFixed(2)} hue rotation in radians
+uniform float uEffect;      // ${state.effect} (0=none,1=pixelate,2=dots,3=halftone,4=scanlines,5=crosshatch)
+uniform float uEffectScale; // ${state.effectScale.toFixed(1)} overlay cell / block size in px
 uniform vec2  uResolution;  // canvas resolution in pixels
 uniform float uCropMode;    // 0 = stretch, 1 = crop (cover)
 
@@ -31,10 +33,13 @@ ${GLSL_UTILITIES}
 
 ${GLSL_WARP_FUNCTIONS}
 
+${GLSL_EFFECT_FUNCTIONS}
+
 void main(){
   float t = uTime * uSpeed;
   vec2 baseUV = vUv;
   if(uCropMode > 0.5) baseUV = coverUV(baseUV, uTexSize, uResolution);
+  if(uEffect > 0.5 && uEffect < 1.5) baseUV = pixelateUV(baseUV, uResolution, uEffectScale);
   vec2 uv = warp(baseUV, t);
   vec3 bilinear = texture2D(uTex, uv).rgb;
   vec3 bicubic  = textureBicubic(uTex, uv, uTexSize);
@@ -48,6 +53,7 @@ void main(){
     col += n * uNoise;
   }
   if(uHueShift != 0.0) col = hueRotate(col, uHueShift);
+  if(uEffect > 1.5) col = applyEffect(col, gl_FragCoord.xy);
   gl_FragColor = vec4(col, 1.0);
 }`;
 }
@@ -82,9 +88,9 @@ gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE);gl.texParamet
 gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,1,1,0,gl.RGBA,gl.UNSIGNED_BYTE,new Uint8Array([0,0,0,255]));
 const im=new Image();im.onload=()=>{gl.bindTexture(gl.TEXTURE_2D,tx);gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,im);draw();};
 im.src="${sanitizeDataURL(state.dataURL)}";
-const uT=gl.getUniformLocation(p,'uTime'),uF=gl.getUniformLocation(p,'uFlow'),uS=gl.getUniformLocation(p,'uSpeed'),uC=gl.getUniformLocation(p,'uScale'),uTex=gl.getUniformLocation(p,'uTex'),uTS=gl.getUniformLocation(p,'uTexSize'),uQ=gl.getUniformLocation(p,'uQuality'),uN=gl.getUniformLocation(p,'uNoise'),uNS=gl.getUniformLocation(p,'uNoiseScale'),uAM=gl.getUniformLocation(p,'uAnimMode'),uHS=gl.getUniformLocation(p,'uHueShift'),uCM=gl.getUniformLocation(p,'uCropMode'),uR=gl.getUniformLocation(p,'uResolution');
+const uT=gl.getUniformLocation(p,'uTime'),uF=gl.getUniformLocation(p,'uFlow'),uS=gl.getUniformLocation(p,'uSpeed'),uC=gl.getUniformLocation(p,'uScale'),uTex=gl.getUniformLocation(p,'uTex'),uTS=gl.getUniformLocation(p,'uTexSize'),uQ=gl.getUniformLocation(p,'uQuality'),uN=gl.getUniformLocation(p,'uNoise'),uNS=gl.getUniformLocation(p,'uNoiseScale'),uAM=gl.getUniformLocation(p,'uAnimMode'),uHS=gl.getUniformLocation(p,'uHueShift'),uEF=gl.getUniformLocation(p,'uEffect'),uES=gl.getUniformLocation(p,'uEffectScale'),uCM=gl.getUniformLocation(p,'uCropMode'),uR=gl.getUniformLocation(p,'uResolution');
 const ANIM=${state.animMode > 0},t0=performance.now();
-function draw(n){n=n||performance.now();gl.uniform1i(uTex,0);gl.uniform2f(uTS,${state.gridW},${state.gridH});gl.uniform1f(uT,ANIM?(n-t0)/1000:0);gl.uniform1f(uF,${state.flow});gl.uniform1f(uS,${state.speed});gl.uniform1f(uC,${state.scale});gl.uniform1f(uQ,${state.quality});gl.uniform1f(uN,${state.noise});gl.uniform1f(uNS,${state.noiseScale});gl.uniform1f(uAM,${state.animMode});gl.uniform1f(uHS,${state.hueShift});gl.uniform1f(uCM,1);gl.uniform2f(uR,cv.width,cv.height);gl.drawArrays(gl.TRIANGLE_STRIP,0,4);}
+function draw(n){n=n||performance.now();gl.uniform1i(uTex,0);gl.uniform2f(uTS,${state.gridW},${state.gridH});gl.uniform1f(uT,ANIM?(n-t0)/1000:0);gl.uniform1f(uF,${state.flow});gl.uniform1f(uS,${state.speed});gl.uniform1f(uC,${state.scale});gl.uniform1f(uQ,${state.quality});gl.uniform1f(uN,${state.noise});gl.uniform1f(uNS,${state.noiseScale});gl.uniform1f(uAM,${state.animMode});gl.uniform1f(uHS,${state.hueShift});gl.uniform1f(uEF,${state.effect});gl.uniform1f(uES,${state.effectScale});gl.uniform1f(uCM,1);gl.uniform2f(uR,cv.width,cv.height);gl.drawArrays(gl.TRIANGLE_STRIP,0,4);}
 function loop(n){draw(n);if(ANIM)requestAnimationFrame(loop);}
 fit();requestAnimationFrame(loop);
 <\/script></body></html>`;
@@ -174,6 +180,8 @@ export default function GradientShader({
       noiseScale: gl.getUniformLocation(prog, "uNoiseScale"),
       animMode: gl.getUniformLocation(prog, "uAnimMode"),
       hueShift: gl.getUniformLocation(prog, "uHueShift"),
+      effect: gl.getUniformLocation(prog, "uEffect"),
+      effectScale: gl.getUniformLocation(prog, "uEffectScale"),
       cropMode: gl.getUniformLocation(prog, "uCropMode"),
       resolution: gl.getUniformLocation(prog, "uResolution"),
     };
@@ -200,6 +208,8 @@ export default function GradientShader({
       gl.uniform1f(U.noiseScale, ${state.noiseScale});
       gl.uniform1f(U.animMode, ${state.animMode});
       gl.uniform1f(U.hueShift, ${state.hueShift});
+      gl.uniform1f(U.effect, ${state.effect});
+      gl.uniform1f(U.effectScale, ${state.effectScale});
       gl.uniform1f(U.cropMode, mode === "stretch" ? 0 : 1);
       gl.uniform2f(U.resolution, gl.drawingBufferWidth, gl.drawingBufferHeight);
       gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
