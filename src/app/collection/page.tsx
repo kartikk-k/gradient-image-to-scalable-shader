@@ -24,6 +24,8 @@ function toGradientState(item: CollectionItem): GradientState {
     noiseScale: item.noiseScale,
     effect: 0,
     effectScale: 8,
+    effectAnim: 0,
+    effectSpeed: 1,
     zoom: 1,
     panX: 0,
     panY: 0,

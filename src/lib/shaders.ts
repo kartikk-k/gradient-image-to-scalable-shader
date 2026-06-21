@@ -168,8 +168,10 @@ vec2 warp(vec2 uv, float t){
 }`;
 
 export const GLSL_EFFECT_FUNCTIONS = `// --- Overlay effects (a stylized layer applied on top of the gradient) ---
-// uEffect:      0 none, 1 pixelate, 2 dots, 3 halftone, 4 scanlines, 5 crosshatch
+// uEffect:      0 none, 1 pixelate, 2 dots, 3 halftone, 4 scanlines
 // uEffectScale: cell / block size in pixels (larger = chunkier)
+// uEffectAnim:  0 none, 1 shimmer, 2 pulse, 3 wave, 4 flicker
+// uEffectSpeed: animation speed of the effect layer
 
 // Pixelate snaps the sampling UV into a block grid so the gradient
 // reconstructs as crisp rectangles instead of a smooth field.
@@ -178,7 +180,33 @@ vec2 pixelateUV(vec2 uv, vec2 resolution, float size){
   return (floor(uv * blocks) + 0.5) / blocks;
 }
 
-// Applies the screen-space overlay effects (modes 2..5) to an already
+// Animated 0..1 multiplier deciding how strongly the effect shows through
+// at each pixel. 1.0 = full effect, 0.0 = untouched gradient. Driven by
+// uEffectAnim so the overlay can shimmer, pulse, sweep or flicker.
+float effectStrength(vec2 fragCoord){
+  if(uEffectAnim < 0.5) return 1.0;
+  float ta = uTime * uEffectSpeed;
+  // 1: Shimmer — a soft diagonal opacity wave travels across the surface.
+  if(uEffectAnim < 1.5){
+    float w = sin(dot(fragCoord, vec2(0.015, 0.012)) - ta * 3.0);
+    return 0.5 + 0.5 * w;
+  }
+  // 2: Pulse — the whole effect fades in and out together.
+  if(uEffectAnim < 2.5){
+    return 0.5 + 0.5 * sin(ta * 2.0);
+  }
+  // 3: Wave — a band of the effect sweeps across horizontally.
+  if(uEffectAnim < 3.5){
+    float x = fragCoord.x / max(uResolution.x, 1.0);
+    return smoothstep(0.0, 1.0, sin((x - ta * 0.2) * 6.28318));
+  }
+  // 4: Flicker — each cell twinkles on and off at random.
+  float cell = max(uEffectScale, 2.0);
+  vec2 id = floor(fragCoord / cell);
+  return smoothstep(0.25, 0.6, hash(id + floor(ta * 6.0)));
+}
+
+// Applies the screen-space overlay effects (modes 2..4) to an already
 // shaded colour. Pixelate (mode 1) is handled before sampling instead.
 vec3 applyEffect(vec3 col, vec2 fragCoord){
   float size = max(uEffectScale, 2.0);
@@ -199,18 +227,9 @@ vec3 applyEffect(vec3 col, vec2 fragCoord){
     col = mix(vec3(1.0), col, m);
   }
   // 4: Scanlines — soft horizontal CRT banding.
-  else if(uEffect > 3.5 && uEffect < 4.5){
+  else if(uEffect > 3.5){
     float s = sin(fragCoord.y / size * 3.14159265);
     col *= 0.7 + 0.3 * s * s;
-  }
-  // 5: Crosshatch — diagonal ink hatching that builds up in the shadows.
-  else if(uEffect > 4.5){
-    float lum = dot(col, vec3(0.299, 0.587, 0.114));
-    float h = 1.0;
-    if(lum < 0.85) h *= smoothstep(0.0, 0.6, abs(mod(fragCoord.x + fragCoord.y, size) / size - 0.5) * 2.0);
-    if(lum < 0.55) h *= smoothstep(0.0, 0.6, abs(mod(fragCoord.x - fragCoord.y, size) / size - 0.5) * 2.0);
-    if(lum < 0.30) h *= smoothstep(0.0, 0.6, abs(mod(fragCoord.x + fragCoord.y, size * 0.5) / (size * 0.5) - 0.5) * 2.0);
-    col = mix(vec3(0.04), col, h);
   }
   return col;
 }`;
@@ -231,8 +250,10 @@ uniform float uMode;        // 0 = shader, 1 = source, 2 = compare
 uniform float uSplit;
 uniform float uAnimMode;    // 0 = none, 1..10 = animation types
 uniform float uHueShift;    // hue rotation in radians
-uniform float uEffect;      // 0 = none, 1..5 = overlay effect types
+uniform float uEffect;      // 0 = none, 1..4 = overlay effect types
 uniform float uEffectScale; // overlay cell / block size in pixels
+uniform float uEffectAnim;  // 0 = none, 1..4 = effect animation types
+uniform float uEffectSpeed; // effect animation speed
 uniform vec2  uResolution;
 uniform float uCropMode;    // 0 = stretch, 1 = crop (cover)
 
@@ -245,11 +266,19 @@ ${GLSL_EFFECT_FUNCTIONS}
 vec3 shaderColor(float t){
   vec2 baseUV = vUv;
   if(uCropMode > 0.5) baseUV = coverUV(baseUV, uTexSize, uResolution);
-  if(uEffect > 0.5 && uEffect < 1.5) baseUV = pixelateUV(baseUV, uResolution, uEffectScale);
+  float fx = effectStrength(gl_FragCoord.xy);
   vec2 uv = warp(baseUV, t);
   vec3 bilinear = texture2D(uTex, uv).rgb;
   vec3 bicubic  = textureBicubic(uTex, uv, uTexSize);
   vec3 col = mix(bilinear, bicubic, uQuality);
+  // Pixelate samples the gradient on a block grid; the animated strength
+  // dissolves the blocks in and out for shimmer-style motion.
+  if(uEffect > 0.5 && uEffect < 1.5){
+    vec2 puv = warp(pixelateUV(baseUV, uResolution, uEffectScale), t);
+    vec3 pb = texture2D(uTex, puv).rgb;
+    vec3 pc = textureBicubic(uTex, puv, uTexSize);
+    col = mix(col, mix(pb, pc, uQuality), fx);
+  }
   vec2 dp = gl_FragCoord.xy + t * 60.0;
   float d = hash(dp) + hash(dp + 7.31) - 1.0;
   col += d * (uQuality / 255.0);
@@ -259,7 +288,7 @@ vec3 shaderColor(float t){
     col += n * uNoise;
   }
   if(uHueShift != 0.0) col = hueRotate(col, uHueShift);
-  if(uEffect > 1.5) col = applyEffect(col, gl_FragCoord.xy);
+  if(uEffect > 1.5) col = mix(col, applyEffect(col, gl_FragCoord.xy), fx);
   return col;
 }
 
@@ -307,5 +336,12 @@ export const EFFECT_MODES = [
   { id: 2, label: "Dots" },
   { id: 3, label: "Halftone" },
   { id: 4, label: "Scanlines" },
-  { id: 5, label: "Crosshatch" },
+] as const;
+
+export const EFFECT_ANIM_MODES = [
+  { id: 0, label: "None" },
+  { id: 1, label: "Shimmer" },
+  { id: 2, label: "Pulse" },
+  { id: 3, label: "Wave" },
+  { id: 4, label: "Flicker" },
 ] as const;

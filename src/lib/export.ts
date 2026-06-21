@@ -24,8 +24,10 @@ uniform float uNoise;      // ${state.noise.toFixed(3)} suggested  (0 = none, st
 uniform float uNoiseScale;  // ${state.noiseScale.toFixed(1)} suggested  (grain size in px)
 uniform float uAnimMode;    // ${state.animMode} (0=none,1=organic,2=hwave,3=vwave,4=pulse,5=swirl,6=breathe,7=drift,8=liquid,9=ripple)
 uniform float uHueShift;    // ${state.hueShift.toFixed(2)} hue rotation in radians
-uniform float uEffect;      // ${state.effect} (0=none,1=pixelate,2=dots,3=halftone,4=scanlines,5=crosshatch)
+uniform float uEffect;      // ${state.effect} (0=none,1=pixelate,2=dots,3=halftone,4=scanlines)
 uniform float uEffectScale; // ${state.effectScale.toFixed(1)} overlay cell / block size in px
+uniform float uEffectAnim;  // ${state.effectAnim} (0=none,1=shimmer,2=pulse,3=wave,4=flicker)
+uniform float uEffectSpeed; // ${state.effectSpeed.toFixed(2)} effect animation speed
 uniform vec2  uResolution;  // canvas resolution in pixels
 uniform float uCropMode;    // 0 = stretch, 1 = crop (cover)
 
@@ -39,11 +41,17 @@ void main(){
   float t = uTime * uSpeed;
   vec2 baseUV = vUv;
   if(uCropMode > 0.5) baseUV = coverUV(baseUV, uTexSize, uResolution);
-  if(uEffect > 0.5 && uEffect < 1.5) baseUV = pixelateUV(baseUV, uResolution, uEffectScale);
+  float fx = effectStrength(gl_FragCoord.xy);
   vec2 uv = warp(baseUV, t);
   vec3 bilinear = texture2D(uTex, uv).rgb;
   vec3 bicubic  = textureBicubic(uTex, uv, uTexSize);
   vec3 col = mix(bilinear, bicubic, uQuality);
+  if(uEffect > 0.5 && uEffect < 1.5){
+    vec2 puv = warp(pixelateUV(baseUV, uResolution, uEffectScale), t);
+    vec3 pb = texture2D(uTex, puv).rgb;
+    vec3 pc = textureBicubic(uTex, puv, uTexSize);
+    col = mix(col, mix(pb, pc, uQuality), fx);
+  }
   vec2 dp = gl_FragCoord.xy + t * 60.0;
   float d = hash(dp) + hash(dp + 7.31) - 1.0;
   col += d * (uQuality / 255.0);
@@ -53,7 +61,7 @@ void main(){
     col += n * uNoise;
   }
   if(uHueShift != 0.0) col = hueRotate(col, uHueShift);
-  if(uEffect > 1.5) col = applyEffect(col, gl_FragCoord.xy);
+  if(uEffect > 1.5) col = mix(col, applyEffect(col, gl_FragCoord.xy), fx);
   gl_FragColor = vec4(col, 1.0);
 }`;
 }
@@ -88,9 +96,9 @@ gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE);gl.texParamet
 gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,1,1,0,gl.RGBA,gl.UNSIGNED_BYTE,new Uint8Array([0,0,0,255]));
 const im=new Image();im.onload=()=>{gl.bindTexture(gl.TEXTURE_2D,tx);gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,im);draw();};
 im.src="${sanitizeDataURL(state.dataURL)}";
-const uT=gl.getUniformLocation(p,'uTime'),uF=gl.getUniformLocation(p,'uFlow'),uS=gl.getUniformLocation(p,'uSpeed'),uC=gl.getUniformLocation(p,'uScale'),uTex=gl.getUniformLocation(p,'uTex'),uTS=gl.getUniformLocation(p,'uTexSize'),uQ=gl.getUniformLocation(p,'uQuality'),uN=gl.getUniformLocation(p,'uNoise'),uNS=gl.getUniformLocation(p,'uNoiseScale'),uAM=gl.getUniformLocation(p,'uAnimMode'),uHS=gl.getUniformLocation(p,'uHueShift'),uEF=gl.getUniformLocation(p,'uEffect'),uES=gl.getUniformLocation(p,'uEffectScale'),uCM=gl.getUniformLocation(p,'uCropMode'),uR=gl.getUniformLocation(p,'uResolution');
-const ANIM=${state.animMode > 0},t0=performance.now();
-function draw(n){n=n||performance.now();gl.uniform1i(uTex,0);gl.uniform2f(uTS,${state.gridW},${state.gridH});gl.uniform1f(uT,ANIM?(n-t0)/1000:0);gl.uniform1f(uF,${state.flow});gl.uniform1f(uS,${state.speed});gl.uniform1f(uC,${state.scale});gl.uniform1f(uQ,${state.quality});gl.uniform1f(uN,${state.noise});gl.uniform1f(uNS,${state.noiseScale});gl.uniform1f(uAM,${state.animMode});gl.uniform1f(uHS,${state.hueShift});gl.uniform1f(uEF,${state.effect});gl.uniform1f(uES,${state.effectScale});gl.uniform1f(uCM,1);gl.uniform2f(uR,cv.width,cv.height);gl.drawArrays(gl.TRIANGLE_STRIP,0,4);}
+const uT=gl.getUniformLocation(p,'uTime'),uF=gl.getUniformLocation(p,'uFlow'),uS=gl.getUniformLocation(p,'uSpeed'),uC=gl.getUniformLocation(p,'uScale'),uTex=gl.getUniformLocation(p,'uTex'),uTS=gl.getUniformLocation(p,'uTexSize'),uQ=gl.getUniformLocation(p,'uQuality'),uN=gl.getUniformLocation(p,'uNoise'),uNS=gl.getUniformLocation(p,'uNoiseScale'),uAM=gl.getUniformLocation(p,'uAnimMode'),uHS=gl.getUniformLocation(p,'uHueShift'),uEF=gl.getUniformLocation(p,'uEffect'),uES=gl.getUniformLocation(p,'uEffectScale'),uEA=gl.getUniformLocation(p,'uEffectAnim'),uEP=gl.getUniformLocation(p,'uEffectSpeed'),uCM=gl.getUniformLocation(p,'uCropMode'),uR=gl.getUniformLocation(p,'uResolution');
+const ANIM=${state.animMode > 0 || (state.effect > 0 && state.effectAnim > 0)},t0=performance.now();
+function draw(n){n=n||performance.now();gl.uniform1i(uTex,0);gl.uniform2f(uTS,${state.gridW},${state.gridH});gl.uniform1f(uT,ANIM?(n-t0)/1000:0);gl.uniform1f(uF,${state.flow});gl.uniform1f(uS,${state.speed});gl.uniform1f(uC,${state.scale});gl.uniform1f(uQ,${state.quality});gl.uniform1f(uN,${state.noise});gl.uniform1f(uNS,${state.noiseScale});gl.uniform1f(uAM,${state.animMode});gl.uniform1f(uHS,${state.hueShift});gl.uniform1f(uEF,${state.effect});gl.uniform1f(uES,${state.effectScale});gl.uniform1f(uEA,${state.effectAnim});gl.uniform1f(uEP,${state.effectSpeed});gl.uniform1f(uCM,1);gl.uniform2f(uR,cv.width,cv.height);gl.drawArrays(gl.TRIANGLE_STRIP,0,4);}
 function loop(n){draw(n);if(ANIM)requestAnimationFrame(loop);}
 fit();requestAnimationFrame(loop);
 <\/script></body></html>`;
@@ -182,13 +190,15 @@ export default function GradientShader({
       hueShift: gl.getUniformLocation(prog, "uHueShift"),
       effect: gl.getUniformLocation(prog, "uEffect"),
       effectScale: gl.getUniformLocation(prog, "uEffectScale"),
+      effectAnim: gl.getUniformLocation(prog, "uEffectAnim"),
+      effectSpeed: gl.getUniformLocation(prog, "uEffectSpeed"),
       cropMode: gl.getUniformLocation(prog, "uCropMode"),
       resolution: gl.getUniformLocation(prog, "uResolution"),
     };
 
     // animMode 0 is a static gradient — render once instead of running a
     // permanent requestAnimationFrame loop that re-renders an identical frame.
-    const animated = ${state.animMode > 0};
+    const animated = ${state.animMode > 0 || (state.effect > 0 && state.effectAnim > 0)};
     const t0 = performance.now();
     let animId = 0;
     let running = false;
@@ -210,6 +220,8 @@ export default function GradientShader({
       gl.uniform1f(U.hueShift, ${state.hueShift});
       gl.uniform1f(U.effect, ${state.effect});
       gl.uniform1f(U.effectScale, ${state.effectScale});
+      gl.uniform1f(U.effectAnim, ${state.effectAnim});
+      gl.uniform1f(U.effectSpeed, ${state.effectSpeed});
       gl.uniform1f(U.cropMode, mode === "stretch" ? 0 : 1);
       gl.uniform2f(U.resolution, gl.drawingBufferWidth, gl.drawingBufferHeight);
       gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);

@@ -16,6 +16,8 @@ export interface GradientState {
   noiseScale: number;
   effect: number;
   effectScale: number;
+  effectAnim: number;
+  effectSpeed: number;
   zoom: number;
   panX: number;
   panY: number;
@@ -43,6 +45,8 @@ export function createDefaultState(): GradientState {
     noiseScale: 1.0,
     effect: 0,
     effectScale: 8.0,
+    effectAnim: 0,
+    effectSpeed: 1.0,
     zoom: 1,
     panX: 0,
     panY: 0,
@@ -150,6 +154,8 @@ export function createGLEngine(
     hueShift: gl.getUniformLocation(prog, "uHueShift"),
     effect: gl.getUniformLocation(prog, "uEffect"),
     effectScale: gl.getUniformLocation(prog, "uEffectScale"),
+    effectAnim: gl.getUniformLocation(prog, "uEffectAnim"),
+    effectSpeed: gl.getUniformLocation(prog, "uEffectSpeed"),
     resolution: gl.getUniformLocation(prog, "uResolution"),
     cropMode: gl.getUniformLocation(prog, "uCropMode"),
   };
@@ -253,7 +259,8 @@ export function createGLEngine(
   function frame(now: number) {
     animId = requestAnimationFrame(frame);
     if (contextLost || !state.img) return;
-    const isAnimating = state.animMode > 0;
+    const isAnimating =
+      state.animMode > 0 || (state.effect > 0 && state.effectAnim > 0);
     if (!isAnimating && !dirty) return;
     dirty = false;
     const time = (now - t0) / 1000;
@@ -285,6 +292,8 @@ export function createGLEngine(
     gl.uniform1f(U.hueShift, state.hueShift);
     gl.uniform1f(U.effect, state.effect);
     gl.uniform1f(U.effectScale, state.effectScale);
+    gl.uniform1f(U.effectAnim, state.effectAnim);
+    gl.uniform1f(U.effectSpeed, state.effectSpeed);
     gl.uniform2f(U.resolution, gl.drawingBufferWidth, gl.drawingBufferHeight);
     gl.uniform1f(U.cropMode, 0);
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
