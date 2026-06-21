@@ -29,6 +29,8 @@ export default function Home() {
         if (patch.quality !== undefined) es.quality = patch.quality;
         if (patch.noise !== undefined) es.noise = patch.noise;
         if (patch.noiseScale !== undefined) es.noiseScale = patch.noiseScale;
+        if (patch.effect !== undefined) es.effect = patch.effect;
+        if (patch.effectScale !== undefined) es.effectScale = patch.effectScale;
         if (patch.animMode !== undefined) es.animMode = patch.animMode;
         if (patch.hueShift !== undefined) es.hueShift = patch.hueShift;
         if (patch.aspectOverride !== undefined) es.aspectOverride = patch.aspectOverride;

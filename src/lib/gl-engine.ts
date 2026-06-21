@@ -14,6 +14,8 @@ export interface GradientState {
   quality: number;
   noise: number;
   noiseScale: number;
+  effect: number;
+  effectScale: number;
   zoom: number;
   panX: number;
   panY: number;
@@ -39,6 +41,8 @@ export function createDefaultState(): GradientState {
     quality: 1.0,
     noise: 0,
     noiseScale: 1.0,
+    effect: 0,
+    effectScale: 8.0,
     zoom: 1,
     panX: 0,
     panY: 0,
@@ -144,6 +148,8 @@ export function createGLEngine(
     split: gl.getUniformLocation(prog, "uSplit"),
     animMode: gl.getUniformLocation(prog, "uAnimMode"),
     hueShift: gl.getUniformLocation(prog, "uHueShift"),
+    effect: gl.getUniformLocation(prog, "uEffect"),
+    effectScale: gl.getUniformLocation(prog, "uEffectScale"),
     resolution: gl.getUniformLocation(prog, "uResolution"),
     cropMode: gl.getUniformLocation(prog, "uCropMode"),
   };
@@ -277,6 +283,8 @@ export function createGLEngine(
     gl.uniform1f(U.split, state.compareSplit);
     gl.uniform1f(U.animMode, state.animMode);
     gl.uniform1f(U.hueShift, state.hueShift);
+    gl.uniform1f(U.effect, state.effect);
+    gl.uniform1f(U.effectScale, state.effectScale);
     gl.uniform2f(U.resolution, gl.drawingBufferWidth, gl.drawingBufferHeight);
     gl.uniform1f(U.cropMode, 0);
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);

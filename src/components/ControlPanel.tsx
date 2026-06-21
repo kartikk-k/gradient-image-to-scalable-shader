@@ -1,7 +1,7 @@
 "use client";
 
 import { AnimatePresence, motion } from "framer-motion";
-import { ANIM_MODES } from "@/lib/shaders";
+import { ANIM_MODES, EFFECT_MODES } from "@/lib/shaders";
 import type { GradientState } from "@/lib/gl-engine";
 import Slider from "./Slider";
 
@@ -88,6 +88,44 @@ export default function ControlPanel({
                   <div className="space-y-1 pt-1">
                     <Slider label="Flow" value={state.flow} min={0} max={1} step={0.01} format={(v) => v.toFixed(2)} onChange={(v) => onStateChange({ flow: v })} />
                     <Slider label="Speed" value={state.speed} min={0} max={2} step={0.01} format={(v) => v.toFixed(2)} onChange={(v) => onStateChange({ speed: v })} />
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            {/* Effect (overlay layer) pills */}
+            <div className="flex items-start gap-2 pt-1">
+              <span className="text-[11px] text-white/60 w-14 shrink-0">Effect</span>
+              <div className="flex flex-wrap gap-1">
+                {EFFECT_MODES.map((m) => (
+                  <button
+                    key={m.id}
+                    aria-pressed={state.effect === m.id}
+                    className={`h-6 px-2.5 rounded-lg text-[12px] cursor-pointer transition-all
+                        ${state.effect === m.id
+                        ? "bg-white text-black font-medium"
+                        : "bg-white/10 text-white/60 hover:bg-white/20"
+                      }`}
+                    onClick={() => onStateChange({ effect: m.id })}
+                  >
+                    {m.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <AnimatePresence initial={false}>
+              {state.effect > 0 && (
+                <motion.div
+                  key="effect-sliders"
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: "auto", opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  transition={{ duration: 0.32, ease: [0.22, 1, 0.36, 1] }}
+                  className="overflow-hidden"
+                >
+                  <div className="space-y-1 pt-1">
+                    <Slider label="Size" value={state.effectScale} min={2} max={64} step={1} format={(v) => `${v}px`} onChange={(v) => onStateChange({ effectScale: v })} />
                   </div>
                 </motion.div>
               )}
